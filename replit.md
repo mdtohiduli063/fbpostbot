@@ -21,6 +21,9 @@ news_bot/
 ├── poster/            Facebook Graph API, Telegram, WordPress
 ├── image_gen/         Pillow 1080×1080 image generator — top single-line ribbon
 │                      headline + category badge + body + engagement hook + footer
+│   └── bangla_renderer.py  HarfBuzz (uharfbuzz) + FreeType (freetype-py) shaper
+│                            — proper Bangla conjuncts & vowel-sign placement,
+│                            because the prebuilt Pillow wheels don't ship libraqm
 ├── video/             NEW Video News Bot
 │   ├── video_collector.py    Wikimedia / Internet Archive / Pexels / Pixabay / VOA
 │   ├── video_processor.py    aiohttp download + ffmpeg watermark (top headline
@@ -88,7 +91,8 @@ currently 404; Wikimedia + Internet Archive are the active video sources.
 
 - Python 3.11 managed via `uv` (`pyproject.toml`).
 - pip: aiohttp, feedparser, beautifulsoup4, lxml, requests, Pillow,
-  python-dotenv, google-generativeai, schedule, pytz, deep-translator.
+  uharfbuzz, freetype-py, python-dotenv, google-generativeai, schedule,
+  pytz, deep-translator.
 - System: ffmpeg + ffprobe (Nix), Noto Bengali fonts.
 - Bundled font: `news_bot/assets/fonts/NotoSansBengali-Bold.ttf`.
 

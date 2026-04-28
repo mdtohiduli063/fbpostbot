@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from ..utils.logger import get_logger
+from .bangla_renderer import BanglaTextRenderer, get_renderer
 
 log = get_logger(__name__)
 
@@ -124,6 +125,9 @@ class ImageGenerator:
         self.font_path = self._find_bangla_font()
         if not self.font_path:
             log.warning("No Bangla TTF found in assets/fonts/ — text quality will degrade.")
+            self._renderer: Optional[BanglaTextRenderer] = None
+        else:
+            self._renderer = get_renderer(self.font_path)
 
     # ───────────────────────────────────────── public ─────────────────────────────
 
@@ -154,11 +158,11 @@ class ImageGenerator:
             # Note: Bangla font doesn't include color emoji glyphs, so we
             # avoid emoji on the image itself (caption keeps them).
             badge_text = CATEGORY_BADGE_BN.get(category, "সংবাদ")
-            self._draw_badge(draw, badge_text,
+            self._draw_badge(draw, img, badge_text,
                              x=self.padding, y=ribbon_h + 28, accent=accent)
 
             # 4. Body text block (centered between badge and footer)
-            self._draw_body_block(draw, body or "",
+            self._draw_body_block(draw, img, body or "",
                                   zone_top=ribbon_h + 130,
                                   zone_bot=self.height - 200,
                                   engagement=engagement)
@@ -167,7 +171,7 @@ class ImageGenerator:
             footer_main = footer or (
                 datetime.now().strftime("%d %b %Y") + "  •  " + self.brand_name
             )
-            self._draw_footer(draw, footer_main, self.bot_credit,
+            self._draw_footer(draw, img, footer_main, self.bot_credit,
                               source_name=source_name)
 
             # 6. Bottom accent bar
@@ -314,43 +318,35 @@ class ImageGenerator:
         max_width = self.width - 2 * (self.padding - 10)
         size = self.headline_size
         min_size = 22  # shrink aggressively before truncating
-        font = self._font(size)
-        while size > min_size and self._text_width(headline, font) > max_width:
+        while size > min_size and self._bn_width(headline, size) > max_width:
             size -= 2
-            font = self._font(size)
 
         # If still too wide at min size, hard-truncate with ellipsis
         text = headline
-        if self._text_width(text, font) > max_width:
-            while text and self._text_width(text + "…", font) > max_width:
+        if self._bn_width(text, size) > max_width:
+            while text and self._bn_width(text + "…", size) > max_width:
                 text = text[:-1]
             text = (text.rstrip() + "…") if text else "…"
 
-        # Center vertically inside ribbon
-        try:
-            l, t, r, b = font.getbbox(text)
-            tw, th = r - l, b - t
-        except Exception:
-            tw, th = self._text_width(text, font), size
+        # Center horizontally + vertically inside ribbon
+        tw = self._bn_width(text, size)
+        th = size
         x = (self.width - tw) // 2
         y = (ribbon_h - th) // 2 - 4
 
         # Strong shadow for premium look
-        draw.text((x + 3, y + 3), text, fill=(0, 0, 0, 220), font=font)
-        draw.text((x, y), text, fill=self.text_color, font=font)
+        self._bn_render(img, text, x, y, size, fill=self.text_color,
+                        shadow=True, shadow_offset=3)
 
         return ribbon_h
 
     # ─────────────────────────── badges + body ───────────────────────────
 
-    def _draw_badge(self, draw: ImageDraw.ImageDraw, text: str,
-                    x: int, y: int, accent: RGB) -> None:
-        font = self._font(self.footer_size)
-        try:
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        except Exception:
-            tw, th = len(text) * 18, self.footer_size
+    def _draw_badge(self, draw: ImageDraw.ImageDraw, img: Image.Image,
+                    text: str, x: int, y: int, accent: RGB) -> None:
+        size = self.footer_size
+        tw = self._bn_width(text, size)
+        th = size
         pad_x, pad_y = 26, 12
         # accent left bar
         draw.rectangle([x, y, x + 8, y + th + pad_y * 2], fill=(*accent, 255))
@@ -359,10 +355,11 @@ class ImageGenerator:
             [x + 8, y, x + tw + pad_x * 2, y + th + pad_y * 2],
             fill=(255, 255, 255, 245),
         )
-        draw.text((x + 8 + pad_x, y + pad_y), text, fill=(20, 20, 20), font=font)
+        self._bn_render(img, text, x + 8 + pad_x, y + pad_y, size,
+                        fill=(20, 20, 20))
 
-    def _draw_body_block(self, draw: ImageDraw.ImageDraw, body: str,
-                         zone_top: int, zone_bot: int,
+    def _draw_body_block(self, draw: ImageDraw.ImageDraw, img: Image.Image,
+                         body: str, zone_top: int, zone_bot: int,
                          engagement: Optional[str]) -> None:
         zone_h = zone_bot - zone_top
         body = (body or "").strip()
@@ -373,18 +370,16 @@ class ImageGenerator:
             body, max_width=self.width - 2 * self.padding - 40,
             initial_size=self.body_size, min_size=24, max_lines=8,
         )
-        b_font = self._font(b_size)
         b_line_h = int(b_size * 1.42)
         body_block_h = b_line_h * len(b_lines)
 
+        e_size = 0
         eng_block_h = 0
-        e_font = None
         if engagement:
             e_size, _ = self._fit_text(
                 engagement, max_width=self.width - 2 * self.padding,
                 initial_size=self.body_size - 4, min_size=22, max_lines=2,
             )
-            e_font = self._font(e_size)
             eng_block_h = int(e_size * 1.4) + 30  # divider gap
 
         total = body_block_h + eng_block_h
@@ -392,59 +387,42 @@ class ImageGenerator:
 
         # Body lines (centered)
         for i, ln in enumerate(b_lines):
-            self._draw_centered(draw, ln, b_font,
-                                y=start_y + i * b_line_h,
-                                fill=(245, 245, 245), shadow=True,
-                                shadow_offset=2)
+            self._bn_render_centered(img, ln, y=start_y + i * b_line_h,
+                                     size=b_size, fill=(245, 245, 245),
+                                     shadow=True, shadow_offset=2)
 
         # Divider + engagement
-        if engagement and e_font is not None:
+        if engagement and e_size:
             cy = start_y + body_block_h + 12
             cx = self.width // 2
             draw.rectangle([cx - 70, cy, cx + 70, cy + 3],
                            fill=(255, 255, 255, 180))
-            # No emoji/special symbols here — Bangla font lacks those glyphs.
-            self._draw_centered(draw, "» " + engagement, e_font,
-                                y=cy + 18, fill=(255, 235, 160),
-                                shadow=True, shadow_offset=2)
+            self._bn_render_centered(img, "» " + engagement, y=cy + 18,
+                                     size=e_size, fill=(255, 235, 160),
+                                     shadow=True, shadow_offset=2)
 
-    def _draw_footer(self, draw: ImageDraw.ImageDraw,
+    def _draw_footer(self, draw: ImageDraw.ImageDraw, img: Image.Image,
                      line1: str, line2: str,
                      source_name: Optional[str] = None) -> None:
-        f1 = self._font(self.footer_size)
-        f2 = self._font(self.credit_size)
-        f3 = self._font(self.credit_size)
-
         # bottom-most: credit line (yellow)
         y2 = self.height - 40 - self.credit_size
-        self._draw_centered(draw, line2, f2, y=y2,
-                            fill=(255, 230, 130), shadow=True, shadow_offset=2)
+        self._bn_render_centered(img, line2, y=y2, size=self.credit_size,
+                                 fill=(255, 230, 130), shadow=True,
+                                 shadow_offset=2)
 
         # second from bottom: date • brand
         y1 = y2 - 14 - self.footer_size
-        self._draw_centered(draw, line1, f1, y=y1,
-                            fill=self.text_color, shadow=True, shadow_offset=2)
+        self._bn_render_centered(img, line1, y=y1, size=self.footer_size,
+                                 fill=self.text_color, shadow=True,
+                                 shadow_offset=2)
 
         # source line (small, top of footer) — no emoji on image
         if source_name:
             src_text = f"সূত্র: {source_name}"
             ys = y1 - 14 - self.credit_size
-            self._draw_centered(draw, src_text, f3, y=ys,
-                                fill=(220, 230, 255), shadow=True, shadow_offset=1)
-
-    def _draw_centered(self, draw: ImageDraw.ImageDraw, text: str,
-                       font: ImageFont.ImageFont, y: int, fill,
-                       shadow: bool = False, shadow_offset: int = 3) -> None:
-        try:
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw = bbox[2] - bbox[0]
-        except Exception:
-            tw = self._text_width(text, font)
-        x = (self.width - tw) // 2
-        if shadow:
-            draw.text((x + shadow_offset, y + shadow_offset), text,
-                      fill=(0, 0, 0, 200), font=font)
-        draw.text((x, y), text, fill=fill, font=font)
+            self._bn_render_centered(img, src_text, y=ys, size=self.credit_size,
+                                     fill=(220, 230, 255), shadow=True,
+                                     shadow_offset=1)
 
     def _paste_logo(self, img: Image.Image, top_offset: int = 0) -> None:
         if not self.logo_path or not os.path.isfile(self.logo_path):
@@ -467,18 +445,16 @@ class ImageGenerator:
                   max_lines: int) -> Tuple[int, List[str]]:
         size = initial_size
         while size >= min_size:
-            font = self._font(size)
-            lines = self._wrap_to_width(text, font, max_width)
+            lines = self._wrap_to_width(text, size, max_width)
             if len(lines) <= max_lines:
                 return size, lines
             size -= 3
-        font = self._font(min_size)
-        lines = self._wrap_to_width(text, font, max_width)[:max_lines]
+        lines = self._wrap_to_width(text, min_size, max_width)[:max_lines]
         if lines:
             lines[-1] = lines[-1].rstrip() + "…"
         return min_size, lines
 
-    def _wrap_to_width(self, text: str, font: ImageFont.ImageFont,
+    def _wrap_to_width(self, text: str, size: int,
                        max_width: int) -> List[str]:
         words = text.split()
         if not words:
@@ -487,7 +463,7 @@ class ImageGenerator:
         current = words[0]
         for w in words[1:]:
             trial = f"{current} {w}"
-            if self._text_width(trial, font) <= max_width:
+            if self._bn_width(trial, size) <= max_width:
                 current = trial
             else:
                 lines.append(current)
@@ -502,6 +478,48 @@ class ImageGenerator:
             return r - l
         except Exception:
             return len(text) * 18
+
+    # ─────────────── Bangla shaping helpers (HarfBuzz + FreeType) ───────────
+
+    def _bn_width(self, text: str, size: int) -> int:
+        """Pixel width of `text` rendered at `size` with proper Bangla shaping."""
+        if self._renderer:
+            return self._renderer.text_width(text, size)
+        return self._text_width(text, self._font(size))
+
+    def _bn_render(self, img: Image.Image, text: str, x: int, y: int,
+                   size: int, fill: RGB,
+                   shadow: bool = False, shadow_offset: int = 2) -> int:
+        """Render `text` at (x, y) (top-left) with proper Bangla shaping.
+
+        Returns the advance width of the rendered text.
+        """
+        if self._renderer:
+            return self._renderer.render(
+                img, text, x=x, y=y, size_px=size, fill=fill,
+                shadow=shadow, shadow_offset=shadow_offset,
+                shadow_fill=(0, 0, 0), shadow_alpha=200,
+            )
+        # Fallback to PIL (English-only safe)
+        d = ImageDraw.Draw(img, "RGBA")
+        font = self._font(size)
+        if shadow:
+            d.text((x + shadow_offset, y + shadow_offset), text,
+                   fill=(0, 0, 0, 200), font=font)
+        d.text((x, y), text, fill=fill, font=font)
+        try:
+            l, t, r, b = font.getbbox(text)
+            return r - l
+        except Exception:
+            return len(text) * size // 2
+
+    def _bn_render_centered(self, img: Image.Image, text: str, y: int,
+                            size: int, fill: RGB,
+                            shadow: bool = False, shadow_offset: int = 2) -> None:
+        tw = self._bn_width(text, size)
+        x = (self.width - tw) // 2
+        self._bn_render(img, text, x, y, size, fill,
+                        shadow=shadow, shadow_offset=shadow_offset)
 
     # ───────────────────────────────── fonts ─────────────────────────────
 

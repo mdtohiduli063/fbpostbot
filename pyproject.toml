@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.14.3",
     "deep-translator>=1.11.4",
     "feedparser>=6.0.12",
+    "freetype-py>=2.5.1",
     "google-generativeai>=0.8.6",
     "lxml>=6.1.0",
     "openai>=2.32.0",
@@ -16,4 +17,5 @@ dependencies = [
     "pytz>=2026.1.post1",
     "requests>=2.33.1",
     "schedule>=1.2.2",
+    "uharfbuzz>=0.54.0",
 ]
