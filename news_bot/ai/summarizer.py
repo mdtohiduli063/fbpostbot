@@ -17,31 +17,57 @@ log = get_logger(__name__)
 _MIN_SECONDS_BETWEEN_LLM_CALLS = 5.0
 
 
+CATEGORY_EMOJI: Dict[str, str] = {
+    "breaking": "🚨", "politics": "🏛️", "cricket": "🏏",
+    "entertainment": "🎬", "government": "📜", "price": "💰",
+    "exam_jobs": "🎓", "tech": "💻", "world": "🌍",
+    "sports": "🏆", "general": "📰",
+}
+
+
 @dataclass
 class Summary:
     """Final post-ready Bangla content."""
     headline: str
-    body: str           # 2-4 line Bangla summary
+    body: str           # 4-6 line Bangla summary
     title: str          # click-worthy clean title
     hashtags: List[str]
     category: str
     source_url: str
     source_name: str
+    engagement: str = ""   # short follow-up question / call to comment
 
     def caption(self) -> str:
-        """Build a Facebook/Telegram caption."""
+        """Build a rich Facebook caption with emoji + engagement + tags."""
+        emoji = CATEGORY_EMOJI.get(self.category, "📰")
         tags = " ".join(self.hashtags)
-        return f"📰 {self.headline}\n\n{self.body}\n\n🔗 সূত্র: {self.source_name}\n\n{tags}"
+        parts = [
+            f"{emoji} {self.headline}",
+            "",
+            self.body,
+        ]
+        if self.engagement:
+            parts += ["", f"💬 {self.engagement}"]
+        parts += [
+            "",
+            f"🔗 সূত্র: {self.source_name}",
+            f"🤖 BOT BY TOHIDUL",
+            "",
+            tags,
+        ]
+        return "\n".join(parts)
 
 
-PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংলা সংবাদ সম্পাদক। নিচের সংবাদটি পড়ে বাংলাদেশের ফেসবুক পাঠকদের জন্য পোস্ট তৈরি করো।
+PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংলা সংবাদ সম্পাদক। নিচের সংবাদটি পড়ে বাংলাদেশের ফেসবুক পাঠকদের জন্য একটি পোস্ট তৈরি করো।
 
 নিয়মাবলী:
 - সহজ, পরিষ্কার, আবেগপ্রবণ বাংলায় লেখো
-- ক্লিকবেইট নয়, কিন্তু আকর্ষণীয় শিরোনাম দাও
-- সারাংশ ২ থেকে ৪ লাইনের মধ্যে রাখো
-- ৩-৬টি প্রাসঙ্গিক হ্যাশট্যাগ যোগ করো (বাংলায়)
-- কোনো ভুল তথ্য তৈরি করো না
+- ক্লিকবেইট নয়, কিন্তু আকর্ষণীয় শিরোনাম দাও (সর্বোচ্চ ১২-১৪ শব্দ)
+- সারাংশ অবশ্যই ৪ থেকে ৬ লাইন এবং ৬০-১১০ শব্দের মধ্যে — পাঠক যেন সব মূল তথ্য পেয়ে যায়
+- কে, কী, কোথায়, কেন, কখন — এই প্রশ্নগুলোর উত্তর সারাংশে থাকা চাই
+- ৫-৮টি প্রাসঙ্গিক হ্যাশট্যাগ যোগ করো (বেশিরভাগ বাংলায়, ২-৩টি ইংরেজি ট্রেন্ডিং)
+- শেষে পাঠকের জন্য একটি ছোট প্রশ্ন বা মন্তব্য আমন্ত্রণ যোগ করো
+- কোনো ভুল তথ্য তৈরি করো না, মূল সংবাদে যা আছে তার বাইরে যেও না
 - শুধুমাত্র বৈধ JSON আউটপুট দাও, অন্য কিছু না
 
 বিভাগ: {category}
@@ -56,9 +82,10 @@ PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংল�
 JSON ফরম্যাটে আউটপুট দাও:
 {{
   "headline": "আকর্ষণীয় বাংলা শিরোনাম",
-  "body": "২-৪ লাইনের সারাংশ",
+  "body": "৪-৬ লাইনের বিস্তারিত সারাংশ যেখানে কে, কী, কোথায়, কেন তথ্য থাকবে",
   "title": "ক্লিক-যোগ্য পরিষ্কার টাইটেল",
-  "hashtags": ["#ট্যাগ১", "#ট্যাগ২"]
+  "engagement": "একটি ছোট প্রশ্ন বা মতামত আমন্ত্রণ",
+  "hashtags": ["#ট্যাগ১", "#ট্যাগ২", "#ট্যাগ৩"]
 }}"""
 
 
@@ -70,6 +97,8 @@ class Summarizer:
         self.provider = cfg.get("provider", "gemini").lower()
         self.translator = Translator("bn") if cfg.get("translate_english_to_bangla", True) else None
         self.default_hashtags = cfg.get("default_hashtags", [])
+        self.category_hashtags: Dict[str, List[str]] = cfg.get("category_hashtags", {})
+        self.max_hashtags = int(cfg.get("max_hashtags", 8))
 
         self._gemini = None
         self._openai = None
@@ -121,19 +150,39 @@ class Summarizer:
             log.warning("Could not parse LLM output, using fallback")
             return self._fallback_summary(article, title, body, category)
 
-        hashtags = parsed.get("hashtags") or []
-        if not hashtags:
-            hashtags = list(self.default_hashtags)
+        hashtags = self._merge_hashtags(parsed.get("hashtags") or [], category)
 
         return Summary(
             headline=parsed.get("headline", title)[:200],
-            body=parsed.get("body", body[:300]),
+            body=parsed.get("body", body[:600]),
             title=parsed.get("title", title)[:200],
-            hashtags=[h if h.startswith("#") else f"#{h}" for h in hashtags][:6],
+            hashtags=hashtags,
             category=category,
             source_url=article.link,
             source_name=article.source,
+            engagement=(parsed.get("engagement") or "").strip()[:200],
         )
+
+    def _merge_hashtags(self, ai_tags: List[str], category: str) -> List[str]:
+        """Combine AI-suggested + per-category curated + global default tags."""
+        out: List[str] = []
+        seen: set = set()
+        # 1. AI tags first (most specific to the actual story)
+        for t in ai_tags:
+            tag = t if t.startswith("#") else f"#{t}"
+            if tag.lower() not in seen:
+                out.append(tag); seen.add(tag.lower())
+        # 2. Category-curated tags
+        for t in self.category_hashtags.get(category, []):
+            tag = t if t.startswith("#") else f"#{t}"
+            if tag.lower() not in seen:
+                out.append(tag); seen.add(tag.lower())
+        # 3. Global defaults to fill remaining slots
+        for t in self.default_hashtags:
+            tag = t if t.startswith("#") else f"#{t}"
+            if tag.lower() not in seen:
+                out.append(tag); seen.add(tag.lower())
+        return out[:self.max_hashtags]
 
     # ---------- internals ----------
 
@@ -189,14 +238,23 @@ class Summarizer:
 
     def _fallback_summary(self, article: Article, title: str, body: str,
                           category: str) -> Summary:
-        """When AI is unavailable, build a minimal usable post."""
-        short_body = body[:280] if body else title
+        """When AI is unavailable, build a richer fallback post."""
+        # Try to use the full RSS body, trimmed to ~600 chars at sentence boundary
+        short_body = body or title
+        if len(short_body) > 600:
+            cut = short_body[:600]
+            last_period = max(cut.rfind("।"), cut.rfind("."), cut.rfind("?"))
+            if last_period > 200:
+                short_body = cut[: last_period + 1]
+            else:
+                short_body = cut + "…"
         return Summary(
-            headline=title[:160],
+            headline=title[:200],
             body=short_body,
-            title=title[:160],
-            hashtags=list(self.default_hashtags),
+            title=title[:200],
+            hashtags=self._merge_hashtags([], category),
             category=category,
             source_url=article.link,
             source_name=article.source,
+            engagement="আপনি কী মনে করেন? কমেন্টে জানান।",
         )

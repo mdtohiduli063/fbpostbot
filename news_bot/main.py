@@ -151,9 +151,10 @@ class NewsBot:
         self.log.info("📝 Headline: %s", summary.headline)
         self.log.info("📝 Body: %s", summary.body[:120])
 
-        # Generate image
+        # Generate image (headline + body)
         image_path = await loop.run_in_executor(
-            None, self.image_gen.generate, summary.headline, summary.category,
+            None, self.image_gen.generate,
+            summary.headline, summary.body, summary.category,
         )
         if not image_path:
             self.log.warning("No image produced; skipping")
@@ -217,11 +218,13 @@ async def amain() -> None:
     bot = NewsBot(cfg)
     scheduler = Scheduler(
         timezone=cfg["general"]["timezone"],
-        post_times=cfg["scheduler"]["post_times"],
+        post_times=cfg["scheduler"].get("post_times", []),
         fetch_interval_minutes=cfg["collection"]["fetch_interval_minutes"],
         fetch_callback=bot.fetch_cycle,
         post_callback=bot.post_cycle,
         daily_callback=bot.daily_report,
+        post_interval_minutes=cfg["scheduler"].get("post_interval_minutes", 0),
+        active_hours=tuple(cfg["scheduler"].get("active_hours", [6, 23])),
     )
 
     # Graceful shutdown

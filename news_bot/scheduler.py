@@ -26,10 +26,16 @@ class Scheduler:
                  fetch_interval_minutes: int,
                  fetch_callback: Callable[[], Awaitable[None]],
                  post_callback: Callable[[], Awaitable[None]],
-                 daily_callback: Callable[[], Awaitable[None]]):
+                 daily_callback: Callable[[], Awaitable[None]],
+                 post_interval_minutes: int = 0,
+                 active_hours: tuple = (6, 23)):
+        """If ``post_interval_minutes`` > 0, post on a fixed cadence (e.g. every
+        60 min) within ``active_hours`` and ignore ``post_times``."""
         self.tz = pytz.timezone(timezone)
         self.post_times = post_times
         self.fetch_interval = max(1, fetch_interval_minutes) * 60
+        self.post_interval = max(0, post_interval_minutes) * 60
+        self.active_start, self.active_end = active_hours
         self.fetch_cb = fetch_callback
         self.post_cb = post_callback
         self.daily_cb = daily_callback
@@ -54,6 +60,7 @@ class Scheduler:
             log.exception("Initial cycle failed: %s", e)
 
         last_fetch = datetime.utcnow()
+        last_post = datetime.utcnow()
 
         while not self._stop.is_set():
             now_local = datetime.now(self.tz)
@@ -64,17 +71,31 @@ class Scheduler:
                 self._fired_today.clear()
                 self._daily_fired_date = today_str
 
-            # Trigger scheduled posts
+            # ── Posting trigger ──────────────────────────────────────
             current_hm = now_local.strftime("%H:%M")
-            for t in self.post_times:
-                key = f"{today_str}-{t}"
-                if current_hm == t and key not in self._fired_today:
-                    log.info("Scheduled post window hit: %s", t)
-                    self._fired_today.add(key)
+            in_active_window = self.active_start <= now_local.hour <= self.active_end
+
+            if self.post_interval > 0:
+                # Interval mode (e.g. every 60 minutes)
+                if (in_active_window and
+                        (datetime.utcnow() - last_post).total_seconds() >= self.post_interval):
+                    last_post = datetime.utcnow()
+                    log.info("Hourly post window hit (%s)", current_hm)
                     try:
                         await self.post_cb()
                     except Exception as e:
-                        log.exception("Scheduled post failed: %s", e)
+                        log.exception("Hourly post failed: %s", e)
+            else:
+                # Fixed-times mode
+                for t in self.post_times:
+                    key = f"{today_str}-{t}"
+                    if current_hm == t and key not in self._fired_today:
+                        log.info("Scheduled post window hit: %s", t)
+                        self._fired_today.add(key)
+                        try:
+                            await self.post_cb()
+                        except Exception as e:
+                            log.exception("Scheduled post failed: %s", e)
 
             # Daily analytics at 23:55 local
             daily_key = f"{today_str}-daily"

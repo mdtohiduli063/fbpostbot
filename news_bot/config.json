@@ -23,45 +23,39 @@
     "max_articles_per_source": 15,
     "duplicate_window_hours": 48,
     "sources": [
-      {
-        "name": "Prothom Alo",
-        "type": "rss",
-        "url": "https://www.prothomalo.com/feed",
-        "enabled": true
-      },
-      {
-        "name": "Bdnews24",
-        "type": "rss",
-        "url": "https://bangla.bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true",
-        "enabled": true
-      },
-      {
-        "name": "Jugantor",
-        "type": "rss",
-        "url": "https://www.jugantor.com/feed/rss.xml",
-        "enabled": true
-      },
-      {
-        "name": "Daily Star Bangla",
-        "type": "rss",
-        "url": "https://bangla.thedailystar.net/rss.xml",
-        "enabled": true
-      },
-      {
-        "name": "BBC Bangla",
-        "type": "rss",
-        "url": "https://feeds.bbci.co.uk/bengali/rss.xml",
-        "enabled": true
-      }
+      { "name": "Prothom Alo",        "type": "rss", "url": "https://www.prothomalo.com/feed",                                                          "enabled": true },
+      { "name": "Bdnews24",            "type": "rss", "url": "https://bangla.bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true",            "enabled": true },
+      { "name": "Jugantor",            "type": "rss", "url": "https://www.jugantor.com/feed/rss.xml",                                                    "enabled": true },
+      { "name": "Daily Star Bangla",   "type": "rss", "url": "https://bangla.thedailystar.net/rss.xml",                                                  "enabled": true },
+      { "name": "BBC Bangla",          "type": "rss", "url": "https://feeds.bbci.co.uk/bengali/rss.xml",                                                 "enabled": true },
+      { "name": "Bonik Barta",         "type": "rss", "url": "https://bonikbarta.net/feed/",                                                             "enabled": true },
+      { "name": "DW Bangla",           "type": "rss", "url": "https://rss.dw.com/rdf/rss-bn-all",                                                        "enabled": true }
     ]
   },
 
   "ai": {
     "provider": "gemini",
     "gemini_model": "gemini-2.0-flash",
-    "max_summary_lines": 4,
+    "max_summary_lines": 6,
+    "max_hashtags": 8,
     "translate_english_to_bangla": true,
-    "default_hashtags": ["#বাংলাদেশ", "#খবর", "#ব্রেকিংনিউজ"]
+    "default_hashtags": [
+      "#বাংলাদেশ", "#সর্বশেষ_সংবাদ", "#ব্রেকিংনিউজ",
+      "#NewsSummary", "#BanglaNews", "#BDNews"
+    ],
+    "category_hashtags": {
+      "breaking":      ["#ব্রেকিং_নিউজ", "#জরুরি_সংবাদ", "#BreakingNews", "#বাংলাদেশ"],
+      "politics":      ["#রাজনীতি", "#বাংলাদেশ_রাজনীতি", "#নির্বাচন", "#সরকার", "#Politics"],
+      "cricket":       ["#ক্রিকেট", "#বাংলাদেশ_ক্রিকেট", "#টাইগার", "#Cricket", "#BANvsIND"],
+      "entertainment": ["#বিনোদন", "#ঢালিউড", "#সিনেমা", "#Entertainment", "#Showbiz"],
+      "government":    ["#সরকার", "#প্রজ্ঞাপন", "#মন্ত্রণালয়", "#GovtBD"],
+      "price":         ["#বাজারদর", "#দামবৃদ্ধি", "#অর্থনীতি", "#Market", "#Economy"],
+      "exam_jobs":     ["#চাকরি", "#পরীক্ষা", "#এসএসসি", "#এইচএসসি", "#JobsBD", "#Result"],
+      "tech":          ["#প্রযুক্তি", "#টেক_নিউজ", "#AI", "#Technology", "#Gadgets"],
+      "world":         ["#আন্তর্জাতিক", "#বিশ্বসংবাদ", "#WorldNews", "#Global"],
+      "sports":        ["#খেলাধুলা", "#স্পোর্টস", "#ফুটবল", "#Sports", "#BDSports"],
+      "general":       ["#বাংলাদেশ", "#সংবাদ", "#News", "#আজকের_খবর"]
+    }
   },
 
   "categories": {
@@ -78,32 +72,40 @@
   },
 
   "viral_keywords": {
-    "breaking": ["ব্রেকিং", "জরুরি", "তাৎক্ষণিক", "breaking", "urgent"],
-    "politics": ["প্রধানমন্ত্রী", "সরকার", "নির্বাচন", "মন্ত্রী", "বিএনপি", "আওয়ামী"],
-    "cricket": ["ক্রিকেট", "সাকিব", "তামিম", "মুশফিক", "বাংলাদেশ দল", "টাইগার"],
-    "entertainment": ["সিনেমা", "নাটক", "অভিনেতা", "অভিনেত্রী", "শাকিব", "বুবলি"],
-    "government": ["মন্ত্রণালয়", "সচিব", "ঘোষণা", "প্রজ্ঞাপন"],
-    "price": ["দাম", "মূল্য", "তেল", "চাল", "পেট্রোল"],
-    "exam_jobs": ["পরীক্ষা", "ফলাফল", "চাকরি", "নিয়োগ", "এসএসসি", "এইচএসসি"]
+    "breaking":      ["ব্রেকিং", "জরুরি", "তাৎক্ষণিক", "breaking", "urgent", "alert"],
+    "politics":      ["প্রধানমন্ত্রী", "সরকার", "নির্বাচন", "মন্ত্রী", "বিএনপি", "আওয়ামী", "জাতীয় পার্টি", "জামায়াত"],
+    "cricket":       ["ক্রিকেট", "সাকিব", "তামিম", "মুশফিক", "বাংলাদেশ দল", "টাইগার", "ম্যাচ", "ওয়ানডে", "টি-টোয়েন্টি"],
+    "entertainment": ["সিনেমা", "নাটক", "অভিনেতা", "অভিনেত্রী", "শাকিব", "বুবলি", "মিথিলা", "ফারিয়া", "গান"],
+    "government":    ["মন্ত্রণালয়", "সচিব", "ঘোষণা", "প্রজ্ঞাপন", "নিষেধাজ্ঞা", "বাজেট"],
+    "price":         ["দাম", "মূল্য", "তেল", "চাল", "পেট্রোল", "গ্যাস", "বাজার", "ডলার", "টাকা"],
+    "exam_jobs":     ["পরীক্ষা", "ফলাফল", "চাকরি", "নিয়োগ", "এসএসসি", "এইচএসসি", "বিসিএস", "ভর্তি"],
+    "tech":          ["প্রযুক্তি", "মোবাইল", "ইন্টারনেট", "AI", "ChatGPT", "গুগল", "ফেসবুক", "অ্যাপ"],
+    "world":         ["যুক্তরাষ্ট্র", "ভারত", "চীন", "ইসরায়েল", "ফিলিস্তিন", "ইউক্রেন", "রাশিয়া"],
+    "sports":        ["ফুটবল", "মেসি", "রোনালদো", "অলিম্পিক", "ফিফা", "এশিয়া কাপ"]
   },
 
   "image": {
     "width": 1080,
     "height": 1080,
-    "headline_font_size": 64,
+    "headline_font_size": 72,
+    "body_font_size": 38,
     "footer_font_size": 32,
-    "padding": 60,
-    "brand_name": "AI News BD",
+    "credit_font_size": 26,
+    "padding": 70,
+    "brand_name": "News Summary",
+    "bot_credit": "BOT BY TOHIDUL",
     "primary_color": [200, 16, 46],
     "secondary_color": [20, 20, 20],
     "text_color": [255, 255, 255]
   },
 
   "scheduler": {
-    "post_times": ["07:00", "13:00", "18:00", "21:00"],
+    "post_interval_minutes": 60,
+    "active_hours": [6, 23],
+    "post_times": [],
     "instant_breaking_news": true,
-    "max_posts_per_run": 3,
-    "min_minutes_between_posts": 25
+    "max_posts_per_run": 1,
+    "min_minutes_between_posts": 55
   },
 
   "facebook": {
