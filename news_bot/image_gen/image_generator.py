@@ -108,7 +108,15 @@ class ImageGenerator:
     def _font(self, size: int) -> ImageFont.ImageFont:
         if self.font_path:
             try:
-                return ImageFont.truetype(self.font_path, size)
+                # layout_engine=RAQM enables HarfBuzz for proper Bangla shaping
+                # (conjuncts, vowel reordering). Falls back gracefully if unsupported.
+                try:
+                    return ImageFont.truetype(
+                        self.font_path, size,
+                        layout_engine=ImageFont.Layout.RAQM,
+                    )
+                except (AttributeError, OSError):
+                    return ImageFont.truetype(self.font_path, size)
             except OSError:
                 pass
         return ImageFont.load_default()

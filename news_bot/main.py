@@ -1,4 +1,4 @@
-"""Main entrypoint: wires collectors → AI → image gen → posters → scheduler."""
+"""Main entrypoint: wires collectors → AI → image gen → Facebook → scheduler."""
 from __future__ import annotations
 
 import asyncio
@@ -16,8 +16,6 @@ if __package__ in (None, ""):
     from news_bot.ai.summarizer import Summarizer
     from news_bot.image_gen.image_generator import ImageGenerator
     from news_bot.poster.facebook import FacebookPoster
-    from news_bot.poster.telegram import TelegramPoster
-    from news_bot.poster.wordpress import WordPressPoster
     from news_bot.scheduler import Scheduler
     from news_bot.utils.analytics import Analytics
     from news_bot.utils.config_loader import load_config
@@ -30,8 +28,6 @@ else:
     from .ai.summarizer import Summarizer
     from .image_gen.image_generator import ImageGenerator
     from .poster.facebook import FacebookPoster
-    from .poster.telegram import TelegramPoster
-    from .poster.wordpress import WordPressPoster
     from .scheduler import Scheduler
     from .utils.analytics import Analytics
     from .utils.config_loader import load_config
@@ -66,23 +62,12 @@ class NewsBot:
             logo_path=general.get("page_logo_path"),
         )
 
+        # Single posting channel: Facebook
         self.fb = FacebookPoster(
             page_id=cfg["secrets"]["facebook_page_id"],
             access_token=cfg["secrets"]["facebook_page_access_token"],
             auto_first_comment=cfg["facebook"]["auto_first_comment"],
         ) if cfg["facebook"]["enabled"] else FacebookPoster("", "")
-
-        self.tg = TelegramPoster(
-            bot_token=cfg["secrets"]["telegram_bot_token"],
-            channel_id=cfg["secrets"]["telegram_channel_id"],
-        ) if cfg["telegram"]["enabled"] else TelegramPoster("", "")
-
-        self.wp = WordPressPoster(
-            site_url=cfg["secrets"]["wordpress_url"],
-            username=cfg["secrets"]["wordpress_username"],
-            app_password=cfg["secrets"]["wordpress_app_password"],
-            default_status=cfg["wordpress"]["default_status"],
-        ) if cfg["wordpress"]["enabled"] else WordPressPoster("", "", "")
 
         # Holding queue of (article, score, category) ready for posting
         self.queue: List[Tuple[Article, float, str]] = []
@@ -111,7 +96,7 @@ class NewsBot:
         async with self._queue_lock:
             for art, score, cat in ranked:
                 self.queue.append((art, score, cat))
-            # Keep queue bounded
+            # Keep queue bounded; sort by score desc
             self.queue = sorted(self.queue, key=lambda x: x[1], reverse=True)[:30]
 
         # Instant breaking news: post anything with very high score right away
@@ -122,7 +107,7 @@ class NewsBot:
                 await self._publish_one(*top)
 
     async def post_cycle(self) -> None:
-        """Pop top items from queue and publish to all enabled channels."""
+        """Pop top items from queue and publish to Facebook."""
         self.log.info("=== Post cycle start ===")
         async with self._queue_lock:
             batch = self.queue[: self.max_per_run]
@@ -155,15 +140,19 @@ class NewsBot:
         self.log.info("Publishing [%s | %.1f]: %s", category, score, art.title[:80])
 
         # Summarize (sync call wrapped in executor to keep loop responsive)
-        summary = await asyncio.get_event_loop().run_in_executor(
-            None, self.summarizer.summarize, art, category
+        loop = asyncio.get_event_loop()
+        summary = await loop.run_in_executor(
+            None, self.summarizer.summarize, art, category,
         )
         if not summary:
             self.log.warning("No summary produced; skipping")
             return
 
+        self.log.info("📝 Headline: %s", summary.headline)
+        self.log.info("📝 Body: %s", summary.body[:120])
+
         # Generate image
-        image_path = await asyncio.get_event_loop().run_in_executor(
+        image_path = await loop.run_in_executor(
             None, self.image_gen.generate, summary.headline, summary.category,
         )
         if not image_path:
@@ -172,32 +161,15 @@ class NewsBot:
 
         caption = summary.caption()
 
-        # Fan out to enabled channels
-        loop = asyncio.get_event_loop()
-        tasks = []
         if self.fb.is_ready():
-            tasks.append(loop.run_in_executor(
+            post_id = await loop.run_in_executor(
                 None, self.fb.post_photo, image_path, caption, art.link,
-            ))
-        if self.tg.is_ready():
-            tasks.append(loop.run_in_executor(
-                None, self.tg.post_photo, image_path, caption,
-            ))
-        if self.wp.is_ready():
-            tasks.append(loop.run_in_executor(
-                None,
-                self.wp.post_article,
-                summary.headline,
-                f"<p>{summary.body}</p><p><a href='{art.link}'>মূল সংবাদ</a></p>",
-                image_path,
-                None,
-            ))
-
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            self.log.info("Channels published: %d", sum(1 for r in results if r and not isinstance(r, Exception)))
+            )
+            if not post_id:
+                self.log.warning("Facebook publish failed for: %s", summary.headline[:60])
+                return
         else:
-            self.log.warning("No posting channels enabled — keeping content local")
+            self.log.warning("Facebook not configured — content kept local only")
 
         # Mark as posted
         self.store.add(article_key(art))
@@ -207,20 +179,16 @@ class NewsBot:
             "posted", source=art.source, category=category, score=round(score, 2),
         )
 
-        # Tiny inter-post delay to avoid hammering APIs
+        # Tiny inter-post delay to avoid hammering API
         await asyncio.sleep(2)
 
     def _log_status(self) -> None:
         self.log.info("─" * 60)
-        self.log.info("News Bot initialized")
+        self.log.info("News Bot initialized (Facebook Page mode)")
         self.log.info("AI provider:   %s (ready=%s)",
                       self.cfg["ai"]["provider"], self.summarizer.is_ready())
         self.log.info("Facebook:      enabled=%s ready=%s",
                       self.cfg["facebook"]["enabled"], self.fb.is_ready())
-        self.log.info("Telegram:      enabled=%s ready=%s",
-                      self.cfg["telegram"]["enabled"], self.tg.is_ready())
-        self.log.info("WordPress:     enabled=%s ready=%s",
-                      self.cfg["wordpress"]["enabled"], self.wp.is_ready())
         self.log.info("Sources:       %d enabled",
                       len([s for s in self.cfg["collection"]["sources"] if s.get("enabled", True)]))
         self.log.info("Post times:    %s (%s)",
@@ -229,7 +197,6 @@ class NewsBot:
 
 
 async def amain() -> None:
-    # Resolve config relative to this file so it works from anywhere
     here = os.path.dirname(os.path.abspath(__file__))
     cfg_path = os.path.join(here, "config.json")
     cfg = load_config(cfg_path)
@@ -241,7 +208,7 @@ async def amain() -> None:
         backup_count=cfg["logging"]["backup_count"],
     )
 
-    # Resolve data dir relative to module
+    # Resolve dirs relative to module
     cfg["general"]["data_dir"] = os.path.join(here, cfg["general"]["data_dir"])
     cfg["general"]["logs_dir"] = os.path.join(here, cfg["general"]["logs_dir"])
     if cfg["general"].get("page_logo_path"):
@@ -263,7 +230,6 @@ async def amain() -> None:
         try:
             loop.add_signal_handler(sig, scheduler.stop)
         except NotImplementedError:
-            # Windows fallback
             pass
 
     await scheduler.run()

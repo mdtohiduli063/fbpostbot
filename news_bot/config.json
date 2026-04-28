@@ -15,14 +15,7 @@
     "openai_api_key": "",
 
     "facebook_page_id": "1066110556588827",
-    "facebook_page_access_token": "EAAKIPiHsKG4BRdKHGP6z0mAvDX8qu0zylZAGgXdkNF6gZBtK7xGzW2MIMArbQPZBZAPLvBMLI78sVord13MY4s3ul7Gv0WyCPtqLTuW23RPaxcW5K0oME5oKs5hUUl9zvqotaiNmtrSkiCfgf3jMzZAwmDU40pPZBPcdSBnYLCp96pXVPOKZBpy6X9PihVChngXvcHrpoZA8cDKCx45vZAN3UDnYj7iXdcvWUB96qZBEQU",
-
-    "telegram_bot_token": "",
-    "telegram_channel_id": "",
-
-    "wordpress_url": "",
-    "wordpress_username": "",
-    "wordpress_app_password": ""
+    "facebook_page_access_token": "EAAKIPiHsKG4BRTfLijeagVeojfp6dHySvwnuy5VpYZAYdVaL6YkpbNjuFN5WFOn9KGHLb0tUZCCLIKe6RhF9kFfss0WTeTB36UNZB2LtlPK4zx6mEWU3ikJLw574ZCdVeWpixbVUHPznugYXVZAna3v0NjjSjXB95uZCq9SAZBaQfNCd6td3EFswdtgZAaJN1WBD82NQ"
   },
 
   "collection": {
@@ -65,8 +58,7 @@
 
   "ai": {
     "provider": "gemini",
-    "gemini_model": "gemini-1.5-flash",
-    "openai_model": "gpt-4o-mini",
+    "gemini_model": "gemini-2.0-flash",
     "max_summary_lines": 4,
     "translate_english_to_bangla": true,
     "default_hashtags": ["#বাংলাদেশ", "#খবর", "#ব্রেকিংনিউজ"]
@@ -116,17 +108,7 @@
 
   "facebook": {
     "enabled": true,
-    "auto_first_comment": true
-  },
-
-  "telegram": {
-    "enabled": false
-  },
-
-  "wordpress": {
-    "enabled": false,
-    "default_category": "News",
-    "default_status": "publish"
+    "auto_first_comment": false
   },
 
   "logging": {

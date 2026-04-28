@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +12,9 @@ from ..utils.logger import get_logger
 from .translator import Translator
 
 log = get_logger(__name__)
+
+# Gemini free tier ≈ 15 RPM. Enforce 5s spacing → safe headroom.
+_MIN_SECONDS_BETWEEN_LLM_CALLS = 5.0
 
 
 @dataclass
@@ -69,6 +73,7 @@ class Summarizer:
 
         self._gemini = None
         self._openai = None
+        self._last_call_ts: float = 0.0
 
         if self.provider == "gemini" and secrets.get("gemini_api_key"):
             try:
@@ -132,20 +137,39 @@ class Summarizer:
 
     # ---------- internals ----------
 
+    def _throttle(self) -> None:
+        """Sleep to respect minimum spacing between LLM calls."""
+        elapsed = time.time() - self._last_call_ts
+        if elapsed < _MIN_SECONDS_BETWEEN_LLM_CALLS:
+            time.sleep(_MIN_SECONDS_BETWEEN_LLM_CALLS - elapsed)
+        self._last_call_ts = time.time()
+
     def _call_llm(self, prompt: str) -> Optional[str]:
-        try:
-            if self._gemini:
-                resp = self._gemini.generate_content(prompt)
-                return resp.text if hasattr(resp, "text") else str(resp)
-            if self._openai:
-                resp = self._openai.chat.completions.create(
-                    model=self.cfg.get("openai_model", "gpt-4o-mini"),
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
-                )
-                return resp.choices[0].message.content
-        except Exception as e:
-            log.error("LLM call failed: %s", e)
+        # Up to 3 attempts with exponential backoff for transient 429/5xx errors.
+        for attempt in range(3):
+            self._throttle()
+            try:
+                if self._gemini:
+                    resp = self._gemini.generate_content(prompt)
+                    return resp.text if hasattr(resp, "text") else str(resp)
+                if self._openai:
+                    resp = self._openai.chat.completions.create(
+                        model=self.cfg.get("openai_model", "gpt-4o-mini"),
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.7,
+                    )
+                    return resp.choices[0].message.content
+                return None
+            except Exception as e:
+                msg = str(e)
+                # Daily-quota errors won't recover within minutes — bail early.
+                if "429" in msg and "quota" in msg.lower():
+                    log.warning("Gemini quota hit (daily limit?) — using fallback: %s",
+                                msg.split("\n")[0][:200])
+                    return None
+                log.warning("LLM attempt %d failed: %s", attempt + 1, msg.split("\n")[0][:200])
+                time.sleep(2 ** attempt * 3)  # 3s, 6s, 12s
+        log.error("LLM call failed after 3 attempts")
         return None
 
     @staticmethod

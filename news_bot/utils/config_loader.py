@@ -1,4 +1,4 @@
-"""Load config.json and merge environment variables.
+"""Load config.json and resolve credentials.
 
 Credentials precedence (highest first):
   1. Environment variable (e.g. GEMINI_API_KEY) — useful for VPS deployment
@@ -15,17 +15,12 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 
 
-# Maps the secret key used inside the bot → the matching env-var name
+# Maps the secret key used inside the bot → matching env-var name
 _SECRET_ENV_MAP: Dict[str, str] = {
     "gemini_api_key":              "GEMINI_API_KEY",
     "openai_api_key":              "OPENAI_API_KEY",
     "facebook_page_access_token":  "FACEBOOK_PAGE_ACCESS_TOKEN",
     "facebook_page_id":            "FACEBOOK_PAGE_ID",
-    "telegram_bot_token":          "TELEGRAM_BOT_TOKEN",
-    "telegram_channel_id":         "TELEGRAM_CHANNEL_ID",
-    "wordpress_url":               "WORDPRESS_URL",
-    "wordpress_username":          "WORDPRESS_USERNAME",
-    "wordpress_app_password":      "WORDPRESS_APP_PASSWORD",
 }
 
 
