@@ -11,6 +11,11 @@ Production-grade Python 3.11 bot that:
    publishes to the same Facebook Page with a fully-attributed caption.
 3. Auto-cleans its own caches (images, videos, reports, logs, events) on a
    TTL + size-cap basis so the disk never fills up.
+4. Runs in **real-time mode** by default: every 2 minutes it polls all
+   configured news sources, and every newly published article is summarised,
+   rendered, and posted to the Facebook Page immediately (throttled by
+   `min_seconds_between_posts`). The local image file is deleted right after
+   the FB post succeeds (`delete_image_after_post`).
 
 ## Architecture
 

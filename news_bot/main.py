@@ -5,6 +5,7 @@ import asyncio
 import os
 import signal
 import sys
+import time
 from typing import Any, Dict, List, Tuple
 
 # Allow `python news_bot/main.py` AND `python -m news_bot.main`
@@ -98,15 +99,24 @@ class NewsBot:
         self.queue: List[Tuple[Article, float, str]] = []
         self._queue_lock = asyncio.Lock()
 
-        self.max_per_run = cfg["scheduler"]["max_posts_per_run"]
-        self.instant_breaking = cfg["scheduler"]["instant_breaking_news"]
+        sched = cfg["scheduler"]
+        self.max_per_run = sched["max_posts_per_run"]
+        self.instant_breaking = sched["instant_breaking_news"]
+
+        # Real-time mode: every fresh article in a fetch cycle is published
+        # immediately (throttled by `min_seconds_between_posts`).
+        self.realtime_mode: bool = bool(sched.get("realtime_mode", False))
+        self.min_seconds_between_posts: int = int(sched.get("min_seconds_between_posts", 25))
+        self.max_posts_per_fetch: int = int(sched.get("max_posts_per_fetch", 8))
+        self.delete_image_after_post: bool = bool(sched.get("delete_image_after_post", True))
+        self._last_post_ts: float = 0.0
 
         self._log_status()
 
     # ---------- core cycles ----------
 
     async def fetch_cycle(self) -> None:
-        """Collect → dedup → score → enqueue. Posts immediately if breaking news."""
+        """Collect → dedup → score → enqueue (or publish immediately in realtime mode)."""
         self.log.info("=== Fetch cycle start ===")
         articles = await self.collector.collect_all()
         self.analytics.record("fetched", count=len(articles))
@@ -118,6 +128,34 @@ class NewsBot:
 
         ranked = self.trending.rank(unique)
 
+        # ── Real-time mode: publish each new article straight to FB,
+        # throttled, capped at max_posts_per_fetch ──
+        if self.realtime_mode:
+            self.log.info("⚡ Realtime mode: publishing up to %d new article(s) immediately",
+                          self.max_posts_per_fetch)
+            published = 0
+            for art, score, cat in ranked:
+                if published >= self.max_posts_per_fetch:
+                    self.log.info("Reached max_posts_per_fetch=%d for this cycle",
+                                  self.max_posts_per_fetch)
+                    break
+                # Throttle between consecutive posts
+                wait = self.min_seconds_between_posts - (time.time() - self._last_post_ts)
+                if wait > 0 and self._last_post_ts > 0:
+                    self.log.info("⏳ Throttling: waiting %.1fs before next post", wait)
+                    await asyncio.sleep(wait)
+                try:
+                    posted = await self._publish_one(art, score, cat)
+                    if posted:
+                        published += 1
+                        self._last_post_ts = time.time()
+                except Exception as e:
+                    self.log.exception("Realtime publish failed for '%s': %s",
+                                       art.title[:60], e)
+            self.log.info("⚡ Realtime cycle done: %d new article(s) published", published)
+            return
+
+        # ── Classic mode: enqueue + post on a separate cycle ──
         async with self._queue_lock:
             for art, score, cat in ranked:
                 self.queue.append((art, score, cat))
@@ -160,9 +198,10 @@ class NewsBot:
 
     # ---------- helpers ----------
 
-    async def _publish_one(self, art: Article, score: float, category: str) -> None:
+    async def _publish_one(self, art: Article, score: float, category: str) -> bool:
+        """Returns True if the article was successfully published."""
         if self.store.has(article_key(art)) or self.store.has(title_key(art)):
-            return
+            return False
 
         self.log.info("Publishing [%s | %.1f]: %s", category, score, art.title[:80])
 
@@ -172,7 +211,7 @@ class NewsBot:
         )
         if not summary:
             self.log.warning("No summary produced; skipping")
-            return
+            return False
 
         self.log.info("📝 Headline: %s", summary.headline)
         self.log.info("📝 Body: %s", summary.body[:120])
@@ -187,20 +226,27 @@ class NewsBot:
         )
         if not image_path:
             self.log.warning("No image produced; skipping")
-            return
+            return False
 
         caption = summary.caption()
 
+        success = False
         if self.fb.is_ready():
             post_id = await loop.run_in_executor(
                 None, self.fb.post_photo, image_path, caption, art.link,
             )
-            if not post_id:
+            if post_id:
+                success = True
+            else:
                 self.log.warning("Facebook publish failed for: %s", summary.headline[:60])
-                return
         else:
             self.log.warning("Facebook not configured — content kept local only")
+            success = True  # treat as ok so we still mark seen + cleanup
 
+        if not success:
+            return False
+
+        # Mark seen + record analytics
         self.store.add(article_key(art))
         self.store.add(title_key(art))
         self.dedup.mark_seen(art)
@@ -208,7 +254,17 @@ class NewsBot:
             "posted", source=art.source, category=category, score=round(score, 2),
         )
 
+        # Delete the local image after a successful post (frees disk fast)
+        if self.delete_image_after_post:
+            try:
+                if image_path and os.path.isfile(image_path):
+                    os.remove(image_path)
+                    self.log.info("🧹 Image removed: %s", os.path.basename(image_path))
+            except Exception as e:
+                self.log.warning("Could not delete image %s: %s", image_path, e)
+
         await asyncio.sleep(2)
+        return True
 
     def _log_status(self) -> None:
         self.log.info("─" * 60)
@@ -219,8 +275,14 @@ class NewsBot:
                       self.cfg["facebook"]["enabled"], self.fb.is_ready())
         self.log.info("Video bot:     enabled=%s ready=%s",
                       self.video_bot.enabled, self.video_bot.poster.is_ready())
-        self.log.info("Sources:       %d enabled",
-                      len([s for s in self.cfg["collection"]["sources"] if s.get("enabled", True)]))
+        self.log.info("Sources:       %d enabled (realtime monitoring every %d min)",
+                      len([s for s in self.cfg["collection"]["sources"] if s.get("enabled", True)]),
+                      self.cfg["collection"]["fetch_interval_minutes"])
+        self.log.info("Realtime mode: %s (max %d posts/cycle, %ds throttle)",
+                      self.realtime_mode, self.max_posts_per_fetch,
+                      self.min_seconds_between_posts)
+        self.log.info("Auto-cleanup:  delete_image_after_post=%s",
+                      self.delete_image_after_post)
         self.log.info("Post times:    %s (%s)",
                       self.cfg["scheduler"]["post_times"], self.cfg["general"]["timezone"])
         self.log.info("─" * 60)
