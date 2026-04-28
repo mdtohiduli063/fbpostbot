@@ -1,0 +1,34 @@
+[Unit]
+Description=AI News Summary Bot (Bangla)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# CHANGE these two paths to match your deployment:
+WorkingDirectory=/opt/news_bot
+ExecStart=/opt/news_bot/.venv/bin/python -m news_bot.main
+
+# Run as a non-root user you create:  sudo useradd -r -s /bin/false newsbot
+User=newsbot
+Group=newsbot
+
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Logs go to journald; rotating file handler also writes to logs/news_bot.log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=news-bot
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/news_bot/data /opt/news_bot/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

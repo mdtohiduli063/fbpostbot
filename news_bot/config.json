@@ -1,0 +1,113 @@
+{
+  "general": {
+    "timezone": "Asia/Dhaka",
+    "language": "bn",
+    "page_logo_path": "assets/logo.png",
+    "image_output_dir": "data/images",
+    "data_dir": "data",
+    "logs_dir": "logs"
+  },
+  "collection": {
+    "fetch_interval_minutes": 7,
+    "max_articles_per_source": 15,
+    "duplicate_window_hours": 48,
+    "sources": [
+      {
+        "name": "Prothom Alo",
+        "type": "rss",
+        "url": "https://www.prothomalo.com/feed",
+        "enabled": true
+      },
+      {
+        "name": "Bdnews24",
+        "type": "rss",
+        "url": "https://bangla.bdnews24.com/?widgetName=rssfeed&widgetId=1150&getXmlFeed=true",
+        "enabled": true
+      },
+      {
+        "name": "Jugantor",
+        "type": "rss",
+        "url": "https://www.jugantor.com/feed/rss.xml",
+        "enabled": true
+      },
+      {
+        "name": "Daily Star Bangla",
+        "type": "rss",
+        "url": "https://bangla.thedailystar.net/rss.xml",
+        "enabled": true
+      },
+      {
+        "name": "BBC Bangla",
+        "type": "rss",
+        "url": "https://feeds.bbci.co.uk/bengali/rss.xml",
+        "enabled": true
+      }
+    ]
+  },
+  "ai": {
+    "provider": "gemini",
+    "gemini_model": "gemini-1.5-flash",
+    "openai_model": "gpt-4o-mini",
+    "max_summary_lines": 4,
+    "translate_english_to_bangla": true,
+    "default_hashtags": ["#বাংলাদেশ", "#খবর", "#ব্রেকিংনিউজ"]
+  },
+  "categories": {
+    "breaking": true,
+    "politics": true,
+    "cricket": true,
+    "entertainment": true,
+    "government": true,
+    "price": true,
+    "exam_jobs": true,
+    "tech": true,
+    "world": true,
+    "sports": true
+  },
+  "viral_keywords": {
+    "breaking": ["ব্রেকিং", "জরুরি", "তাৎক্ষণিক", "breaking", "urgent"],
+    "politics": ["প্রধানমন্ত্রী", "সরকার", "নির্বাচন", "মন্ত্রী", "বিএনপি", "আওয়ামী"],
+    "cricket": ["ক্রিকেট", "সাকিব", "তামিম", "মুশফিক", "বাংলাদেশ দল", "টাইগার"],
+    "entertainment": ["সিনেমা", "নাটক", "অভিনেতা", "অভিনেত্রী", "শাকিব", "বুবলি"],
+    "government": ["মন্ত্রণালয়", "সচিব", "ঘোষণা", "প্রজ্ঞাপন"],
+    "price": ["দাম", "মূল্য", "তেল", "চাল", "পেট্রোল"],
+    "exam_jobs": ["পরীক্ষা", "ফলাফল", "চাকরি", "নিয়োগ", "এসএসসি", "এইচএসসি"]
+  },
+  "image": {
+    "width": 1080,
+    "height": 1080,
+    "headline_font_size": 64,
+    "footer_font_size": 32,
+    "padding": 60,
+    "brand_name": "AI News BD",
+    "primary_color": [200, 16, 46],
+    "secondary_color": [20, 20, 20],
+    "text_color": [255, 255, 255]
+  },
+  "scheduler": {
+    "post_times": ["07:00", "13:00", "18:00", "21:00"],
+    "instant_breaking_news": true,
+    "max_posts_per_run": 3,
+    "min_minutes_between_posts": 25
+  },
+  "facebook": {
+    "enabled": false,
+    "page_id": "",
+    "auto_first_comment": true
+  },
+  "telegram": {
+    "enabled": false,
+    "channel_id": ""
+  },
+  "wordpress": {
+    "enabled": false,
+    "site_url": "",
+    "default_category": "News",
+    "default_status": "publish"
+  },
+  "logging": {
+    "level": "INFO",
+    "max_bytes": 5242880,
+    "backup_count": 5
+  }
+}

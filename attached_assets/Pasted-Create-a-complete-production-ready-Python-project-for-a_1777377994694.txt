@@ -1,0 +1,132 @@
+Create a complete production-ready Python project for a fully automated AI News Summary Page Bot, designed to run 24/7 on a Linux VPS server (Ubuntu 22.04+).
+
+Primary Goal:
+Automatically collect trending news, summarize them in Bangla, generate engaging post images, and auto-publish to Facebook Page, Telegram Channel, and optional website.
+
+Target Audience:
+Bangladesh audience.
+
+Main Niche:
+Bangla News Summary / Breaking News / Viral Updates / Sports / Tech / World News.
+
+Core Features:
+
+1. News Collection Engine
+- Automatically fetch latest news every 5–10 minutes from:
+  - Prothom Alo
+  - Bdnews24
+  - Jugantor
+  - Daily Star Bangla
+  - BBC Bangla
+  - Other RSS feeds
+- Support RSS feed + web scraping fallback.
+- Remove duplicate news.
+- Detect trending / breaking news.
+
+2. AI Bangla Summarizer
+Use Gemini API or OpenAI API.
+
+Convert long article into:
+- Attractive Bangla headline
+- 2 to 4 line simple Bangla summary
+- Click-worthy but clean title
+- Add hashtags automatically
+
+Prompt style:
+Readable, emotional, simple Bangla language for Facebook users.
+
+3. Auto Image Generator
+Generate post image automatically:
+- 1080x1080 size
+- Bold Bangla headline
+- Clean modern breaking-news style
+- Background based on topic
+- Add page logo
+- Use Bengali font support
+
+4. Auto Facebook Posting
+Use Facebook Graph API.
+
+Auto post:
+- Image + Caption
+- Scheduled or instant posting
+- Retry if failed
+
+5. Telegram Auto Posting
+Post same content to Telegram channel.
+
+6. Optional Website Posting
+Auto post summary article to WordPress via REST API.
+
+7. Smart Viral Detection
+Prioritize news types:
+- Breaking Bangladesh news
+- Politics
+- Cricket
+- Entertainment viral news
+- Government decisions
+- Price changes
+- Exams / jobs / result news
+
+8. Scheduler System
+Daily auto posting plan:
+- Morning 7 AM
+- Noon 1 PM
+- Evening 6 PM
+- Night 9 PM
+Also support instant breaking news mode.
+
+9. Admin Controls
+Simple config.json for:
+- API keys
+- Facebook tokens
+- Telegram token
+- Posting frequency
+- Enable/disable categories
+
+10. Logging & Error Handling
+- Save logs
+- Retry failed jobs
+- Detect API errors
+- Rotate logs
+
+11. Deployment Ready
+Provide:
+- requirements.txt
+- .env.example
+- setup.sh
+- systemd service file
+- README.md
+
+12. Folder Structure
+Use clean modular architecture:
+
+/news_bot
+  /collectors
+  /ai
+  /poster
+  /image_gen
+  /utils
+  main.py
+  config.json
+  requirements.txt
+
+13. Advanced Features
+- Duplicate title checker
+- Trending keyword scoring
+- Translate English news to Bangla
+- Auto comment first comment with source link
+- Auto analytics report daily
+
+14. Coding Rules
+- Python 3.11+
+- Async where useful
+- Clean code
+- Production ready
+- Commented code
+- Easy to extend
+
+15. Final Output Needed
+Give complete code files one by one.
+Do not skip anything.
+Start with project structure first, then each file fully coded.

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Env / secrets
+.env
+.env.local
+
+# Bot runtime data
+news_bot/data/
+news_bot/logs/
+news_bot/assets/fonts/*.ttf
+!news_bot/assets/fonts/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
