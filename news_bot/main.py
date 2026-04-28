@@ -1,4 +1,4 @@
-"""Main entrypoint: wires collectors → AI → image gen → Facebook → scheduler."""
+"""Main entrypoint: wires collectors → AI → image gen → Facebook (image + video bot) + scheduler + cache cleaner."""
 from __future__ import annotations
 
 import asyncio
@@ -18,9 +18,11 @@ if __package__ in (None, ""):
     from news_bot.poster.facebook import FacebookPoster
     from news_bot.scheduler import Scheduler
     from news_bot.utils.analytics import Analytics
+    from news_bot.utils.cache_cleaner import CacheCleaner
     from news_bot.utils.config_loader import load_config
     from news_bot.utils.logger import get_logger, setup_logging
     from news_bot.utils.storage import ArticleStore
+    from news_bot.video.video_orchestrator import VideoBot
 else:
     from .collectors.deduplicator import Deduplicator, article_key, title_key
     from .collectors.rss_collector import Article, RSSCollector
@@ -30,9 +32,11 @@ else:
     from .poster.facebook import FacebookPoster
     from .scheduler import Scheduler
     from .utils.analytics import Analytics
+    from .utils.cache_cleaner import CacheCleaner
     from .utils.config_loader import load_config
     from .utils.logger import get_logger, setup_logging
     from .utils.storage import ArticleStore
+    from .video.video_orchestrator import VideoBot
 
 
 class NewsBot:
@@ -49,7 +53,7 @@ class NewsBot:
         self.dedup = Deduplicator(self.store.all_keys())
         self.analytics = Analytics(general["data_dir"])
 
-        # Pipeline
+        # Pipeline (image / text bot)
         self.collector = RSSCollector(
             cfg["collection"]["sources"],
             max_per_source=cfg["collection"]["max_articles_per_source"],
@@ -62,12 +66,33 @@ class NewsBot:
             logo_path=general.get("page_logo_path"),
         )
 
-        # Single posting channel: Facebook
+        # Single posting channel: Facebook (image)
         self.fb = FacebookPoster(
             page_id=cfg["secrets"]["facebook_page_id"],
             access_token=cfg["secrets"]["facebook_page_access_token"],
             auto_first_comment=cfg["facebook"]["auto_first_comment"],
         ) if cfg["facebook"]["enabled"] else FacebookPoster("", "")
+
+        # Video bot (independent pipeline)
+        self.video_bot = VideoBot(
+            cfg.get("video_bot", {}), cfg["secrets"],
+            data_dir=general["data_dir"],
+            fb_credit=cfg["image"].get("bot_credit", "BOT BY TOHIDUL"),
+            brand_name=cfg["image"].get("brand_name", "News Summary"),
+            font_path=self.image_gen.font_path,
+        )
+
+        # Cache cleaner
+        self.cache = CacheCleaner(
+            cfg.get("cache", {}),
+            paths={
+                "images_dir":  os.path.join(general["data_dir"], "images"),
+                "videos_dir":  os.path.join(general["data_dir"], "videos"),
+                "data_dir":    general["data_dir"],
+                "events_path": os.path.join(general["data_dir"], "events.jsonl"),
+                "logs_dir":    general["logs_dir"],
+            },
+        )
 
         # Holding queue of (article, score, category) ready for posting
         self.queue: List[Tuple[Article, float, str]] = []
@@ -96,10 +121,8 @@ class NewsBot:
         async with self._queue_lock:
             for art, score, cat in ranked:
                 self.queue.append((art, score, cat))
-            # Keep queue bounded; sort by score desc
             self.queue = sorted(self.queue, key=lambda x: x[1], reverse=True)[:30]
 
-        # Instant breaking news: post anything with very high score right away
         if self.instant_breaking:
             top = ranked[0] if ranked else None
             if top and top[1] >= 5.0 and top[2] == "breaking":
@@ -131,6 +154,10 @@ class NewsBot:
         if path:
             self.log.info("📊 Daily report written: %s", path)
 
+    async def cache_clean_cycle(self) -> None:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self.cache.run)
+
     # ---------- helpers ----------
 
     async def _publish_one(self, art: Article, score: float, category: str) -> None:
@@ -139,7 +166,6 @@ class NewsBot:
 
         self.log.info("Publishing [%s | %.1f]: %s", category, score, art.title[:80])
 
-        # Summarize (sync call wrapped in executor to keep loop responsive)
         loop = asyncio.get_event_loop()
         summary = await loop.run_in_executor(
             None, self.summarizer.summarize, art, category,
@@ -151,10 +177,13 @@ class NewsBot:
         self.log.info("📝 Headline: %s", summary.headline)
         self.log.info("📝 Body: %s", summary.body[:120])
 
-        # Generate image (headline + body)
+        # Generate image (top single-line headline + body + engagement)
         image_path = await loop.run_in_executor(
             None, self.image_gen.generate,
             summary.headline, summary.body, summary.category,
+            None,                # footer (default = date • brand)
+            summary.source_name,
+            summary.engagement,
         )
         if not image_path:
             self.log.warning("No image produced; skipping")
@@ -172,7 +201,6 @@ class NewsBot:
         else:
             self.log.warning("Facebook not configured — content kept local only")
 
-        # Mark as posted
         self.store.add(article_key(art))
         self.store.add(title_key(art))
         self.dedup.mark_seen(art)
@@ -180,16 +208,17 @@ class NewsBot:
             "posted", source=art.source, category=category, score=round(score, 2),
         )
 
-        # Tiny inter-post delay to avoid hammering API
         await asyncio.sleep(2)
 
     def _log_status(self) -> None:
         self.log.info("─" * 60)
-        self.log.info("News Bot initialized (Facebook Page mode)")
+        self.log.info("News Bot initialized (Image + Video pipelines)")
         self.log.info("AI provider:   %s (ready=%s)",
                       self.cfg["ai"]["provider"], self.summarizer.is_ready())
         self.log.info("Facebook:      enabled=%s ready=%s",
                       self.cfg["facebook"]["enabled"], self.fb.is_ready())
+        self.log.info("Video bot:     enabled=%s ready=%s",
+                      self.video_bot.enabled, self.video_bot.poster.is_ready())
         self.log.info("Sources:       %d enabled",
                       len([s for s in self.cfg["collection"]["sources"] if s.get("enabled", True)]))
         self.log.info("Post times:    %s (%s)",
@@ -209,7 +238,6 @@ async def amain() -> None:
         backup_count=cfg["logging"]["backup_count"],
     )
 
-    # Resolve dirs relative to module
     cfg["general"]["data_dir"] = os.path.join(here, cfg["general"]["data_dir"])
     cfg["general"]["logs_dir"] = os.path.join(here, cfg["general"]["logs_dir"])
     if cfg["general"].get("page_logo_path"):
@@ -225,9 +253,13 @@ async def amain() -> None:
         daily_callback=bot.daily_report,
         post_interval_minutes=cfg["scheduler"].get("post_interval_minutes", 0),
         active_hours=tuple(cfg["scheduler"].get("active_hours", [6, 23])),
+        video_fetch_callback=bot.video_bot.fetch_cycle if bot.video_bot.enabled else None,
+        video_post_callback=bot.video_bot.post_cycle if bot.video_bot.enabled else None,
+        video_post_interval_minutes=cfg["scheduler"].get("video_post_interval_minutes", 0),
+        cache_clean_callback=bot.cache_clean_cycle,
+        cache_clean_interval_minutes=cfg["scheduler"].get("cache_clean_interval_minutes", 60),
     )
 
-    # Graceful shutdown
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:

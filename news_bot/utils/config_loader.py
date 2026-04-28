@@ -21,6 +21,8 @@ _SECRET_ENV_MAP: Dict[str, str] = {
     "openai_api_key":              "OPENAI_API_KEY",
     "facebook_page_access_token":  "FACEBOOK_PAGE_ACCESS_TOKEN",
     "facebook_page_id":            "FACEBOOK_PAGE_ID",
+    "pexels_api_key":              "PEXELS_API_KEY",
+    "pixabay_api_key":             "PIXABAY_API_KEY",
 }
 
 

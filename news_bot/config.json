@@ -4,6 +4,7 @@
     "language": "bn",
     "page_logo_path": "assets/logo.png",
     "image_output_dir": "data/images",
+    "video_output_dir": "data/videos",
     "data_dir": "data",
     "logs_dir": "logs"
   },
@@ -15,7 +16,10 @@
     "openai_api_key": "",
 
     "facebook_page_id": "1066110556588827",
-    "facebook_page_access_token": "EAAKIPiHsKG4BRTfLijeagVeojfp6dHySvwnuy5VpYZAYdVaL6YkpbNjuFN5WFOn9KGHLb0tUZCCLIKe6RhF9kFfss0WTeTB36UNZB2LtlPK4zx6mEWU3ikJLw574ZCdVeWpixbVUHPznugYXVZAna3v0NjjSjXB95uZCq9SAZBaQfNCd6td3EFswdtgZAaJN1WBD82NQ"
+    "facebook_page_access_token": "EAAKIPiHsKG4BRTfLijeagVeojfp6dHySvwnuy5VpYZAYdVaL6YkpbNjuFN5WFOn9KGHLb0tUZCCLIKe6RhF9kFfss0WTeTB36UNZB2LtlPK4zx6mEWU3ikJLw574ZCdVeWpixbVUHPznugYXVZAna3v0NjjSjXB95uZCq9SAZBaQfNCd6td3EFswdtgZAaJN1WBD82NQ",
+
+    "pexels_api_key": "",
+    "pixabay_api_key": ""
   },
 
   "collection": {
@@ -87,11 +91,11 @@
   "image": {
     "width": 1080,
     "height": 1080,
-    "headline_font_size": 72,
-    "body_font_size": 38,
-    "footer_font_size": 32,
+    "headline_font_size": 64,
+    "body_font_size": 40,
+    "footer_font_size": 30,
     "credit_font_size": 26,
-    "padding": 70,
+    "padding": 60,
     "brand_name": "News Summary",
     "bot_credit": "BOT BY TOHIDUL",
     "primary_color": [200, 16, 46],
@@ -105,12 +109,56 @@
     "post_times": [],
     "instant_breaking_news": true,
     "max_posts_per_run": 1,
-    "min_minutes_between_posts": 55
+    "min_minutes_between_posts": 55,
+    "video_post_interval_minutes": 180,
+    "cache_clean_interval_minutes": 60
   },
 
   "facebook": {
     "enabled": true,
     "auto_first_comment": false
+  },
+
+  "video_bot": {
+    "enabled": true,
+    "max_posts_per_run": 1,
+    "translate_to_bangla": true,
+    "dedup_ttl_hours": 168,
+    "timeout_seconds": 25,
+    "max_per_source": 6,
+    "min_duration_seconds": 8,
+    "max_duration_seconds": 180,
+    "search_terms": [
+      "Bangladesh", "Dhaka", "South Asia", "Asia news"
+    ],
+    "sources_enabled": {
+      "voa": false,
+      "wikimedia": true,
+      "internet_archive": true,
+      "pexels": true,
+      "pixabay": true
+    },
+    "voa_feeds": [],
+    "processor": {
+      "max_output_seconds": 90,
+      "target_fps": 30,
+      "target_width": 1080,
+      "target_height": 1080,
+      "video_bitrate": "1800k",
+      "audio_bitrate": "128k",
+      "download_timeout_seconds": 90
+    }
+  },
+
+  "cache": {
+    "run_every_minutes": 60,
+    "images_ttl_hours": 48,
+    "images_max_mb": 200,
+    "videos_ttl_hours": 24,
+    "videos_max_mb": 500,
+    "reports_ttl_days": 14,
+    "events_max_mb": 5,
+    "logs_ttl_days": 7
   },
 
   "logging": {

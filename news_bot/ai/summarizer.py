@@ -38,36 +38,54 @@ class Summary:
     engagement: str = ""   # short follow-up question / call to comment
 
     def caption(self) -> str:
-        """Build a rich Facebook caption with emoji + engagement + tags."""
+        """Build an audience-attractive Facebook caption.
+
+        Layout (top → bottom):
+          • single bold headline line with category emoji  (always first line!)
+          • thin separator line
+          • 4-6 line summary body
+          • engagement hook with eye-catching emoji
+          • source attribution
+          • bot credit
+          • hashtag block
+        """
         emoji = CATEGORY_EMOJI.get(self.category, "📰")
+        sep = "━━━━━━━━━━━━━━━━━━━━━"
         tags = " ".join(self.hashtags)
-        parts = [
-            f"{emoji} {self.headline}",
-            "",
-            self.body,
+        # Headline always single line on top
+        headline_line = f"{emoji} {self.headline.strip()}"
+
+        parts: List[str] = [
+            headline_line,
+            sep,
+            self.body.strip(),
         ]
         if self.engagement:
-            parts += ["", f"💬 {self.engagement}"]
+            parts += ["", f"💬 আপনার মতামত: {self.engagement}"]
         parts += [
             "",
-            f"🔗 সূত্র: {self.source_name}",
-            f"🤖 BOT BY TOHIDUL",
+            f"📡 সূত্র: {self.source_name}",
+            f"🔗 মূল সংবাদ: {self.source_url}",
+            "",
+            "🤖 BOT BY TOHIDUL",
             "",
             tags,
         ]
         return "\n".join(parts)
 
 
-PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংলা সংবাদ সম্পাদক। নিচের সংবাদটি পড়ে বাংলাদেশের ফেসবুক পাঠকদের জন্য একটি পোস্ট তৈরি করো।
+PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংলা সংবাদ সম্পাদক এবং ফেসবুক ভাইরাল পোস্ট লেখক।
+তোমার কাজ এমন একটি পোস্ট বানানো যা পড়েই পাঠক থামতে বাধ্য হবে।
 
 নিয়মাবলী:
-- সহজ, পরিষ্কার, আবেগপ্রবণ বাংলায় লেখো
-- ক্লিকবেইট নয়, কিন্তু আকর্ষণীয় শিরোনাম দাও (সর্বোচ্চ ১২-১৪ শব্দ)
-- সারাংশ অবশ্যই ৪ থেকে ৬ লাইন এবং ৬০-১১০ শব্দের মধ্যে — পাঠক যেন সব মূল তথ্য পেয়ে যায়
-- কে, কী, কোথায়, কেন, কখন — এই প্রশ্নগুলোর উত্তর সারাংশে থাকা চাই
-- ৫-৮টি প্রাসঙ্গিক হ্যাশট্যাগ যোগ করো (বেশিরভাগ বাংলায়, ২-৩টি ইংরেজি ট্রেন্ডিং)
-- শেষে পাঠকের জন্য একটি ছোট প্রশ্ন বা মন্তব্য আমন্ত্রণ যোগ করো
-- কোনো ভুল তথ্য তৈরি করো না, মূল সংবাদে যা আছে তার বাইরে যেও না
+- শিরোনাম অবশ্যই **এক লাইনে**, সর্বোচ্চ ৮-১১ শব্দ — শক্তিশালী, আবেগপ্রবণ, কৌতূহল জাগানো
+- শিরোনামে কখনো ক্লিকবেইট নয়, কিন্তু পাঠকের মনে প্রশ্ন/উত্তেজনা তৈরি হবে
+- সারাংশ ৪-৬ লাইন (৭০-১২০ শব্দ) — প্রতিটি লাইন একটি স্বতন্ত্র তথ্য বহন করবে
+- কে, কী, কোথায়, কখন, কেন — এই ৫টি প্রশ্নের উত্তর সারাংশে থাকতেই হবে
+- ভাষা সহজ, প্রাণবন্ত, আবেগপ্রবণ — ফেসবুকে যেমন পাঠক পড়ে
+- ৬-৮টি প্রাসঙ্গিক হ্যাশট্যাগ (বেশিরভাগ বাংলা, ২-৩টি ইংরেজি ট্রেন্ডিং)
+- শেষে পাঠকের জন্য একটি প্রশ্ন বা মতামত আমন্ত্রণ — কমেন্ট বাড়ানোর জন্য
+- কোনো ভুল তথ্য বানিয়ো না, মূল সংবাদের বাইরে যেও না
 - শুধুমাত্র বৈধ JSON আউটপুট দাও, অন্য কিছু না
 
 বিভাগ: {category}
