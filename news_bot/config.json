@@ -91,12 +91,12 @@
     "min_minutes_between_posts": 25
   },
   "facebook": {
-    "enabled": false,
+    "enabled": true,
     "page_id": "",
     "auto_first_comment": true
   },
   "telegram": {
-    "enabled": false,
+    "enabled": true,
     "channel_id": ""
   },
   "wordpress": {
