@@ -84,6 +84,12 @@ class VideoProcessor:
     async def _download(self, item: VideoItem) -> Optional[str]:
         if not item.video_url:
             return None
+
+        # YouTube items need yt-dlp because direct URLs are time-limited and
+        # often DASH/HLS only.
+        if item.extras.get("youtube_id"):
+            return await asyncio.to_thread(self._download_youtube, item)
+
         ext = os.path.splitext(item.video_url.split("?")[0])[1].lower()
         if ext not in (".mp4", ".webm", ".mov", ".mkv", ".m4v", ".ogv"):
             ext = ".mp4"
@@ -126,6 +132,51 @@ class VideoProcessor:
                  os.path.getsize(path) / (1024 * 1024))
         return path
 
+    def _download_youtube(self, item: VideoItem) -> Optional[str]:
+        """Download a YouTube video via yt-dlp into the raw dir."""
+        try:
+            import yt_dlp
+        except ImportError:
+            log.error("yt-dlp missing — cannot download YouTube item")
+            return None
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        out_template = os.path.join(
+            self._raw_dir,
+            f"raw_yt_{_safe_filename(item.source)}_{ts}.%(ext)s",
+        )
+        opts = {
+            "quiet": True, "no_warnings": True,
+            "outtmpl": out_template,
+            # Single-file MP4 if possible to avoid needing ffmpeg merge later
+            "format": "best[ext=mp4][height<=720]/best[height<=720]/best",
+            "merge_output_format": "mp4",
+            "noprogress": True,
+            "retries": 3,
+        }
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(item.video_url, download=True)
+                downloaded = ydl.prepare_filename(info)
+        except Exception as e:
+            log.warning("yt-dlp download failed for %s: %s",
+                        item.video_url[:80], e)
+            return None
+
+        # yt-dlp may have changed the extension after merge
+        if not os.path.isfile(downloaded):
+            base, _ = os.path.splitext(downloaded)
+            for ext in (".mp4", ".mkv", ".webm"):
+                if os.path.isfile(base + ext):
+                    downloaded = base + ext
+                    break
+        if not os.path.isfile(downloaded):
+            log.warning("yt-dlp output missing for %s", item.video_url[:80])
+            return None
+        log.info("⬇  YouTube download (%s) %.1f MB",
+                 item.source, os.path.getsize(downloaded) / (1024 * 1024))
+        return downloaded
+
     # ────────────────────────── ffmpeg pipeline ──────────────────────────
 
     def _ffmpeg_render(self, raw_path: str, item: VideoItem,
@@ -146,10 +197,20 @@ class VideoProcessor:
         ]
         vf = ",".join(vf_parts)
 
-        cmd = [
-            "ffmpeg", "-y",
+        # Optional trim window from the collector (eg. YouTube most-replayed)
+        trim_start = float(item.extras.get("trim_start", 0.0) or 0.0)
+        trim_dur = float(item.extras.get("trim_duration", 0.0) or 0.0)
+        clip_seconds = (trim_dur if trim_dur > 0
+                        else float(self.max_duration))
+        # Hard cap to processor's max_duration so we never render a 10-min clip
+        clip_seconds = min(clip_seconds, float(self.max_duration))
+
+        cmd = ["ffmpeg", "-y"]
+        if trim_start > 0:
+            cmd += ["-ss", f"{trim_start:.2f}"]
+        cmd += [
             "-i", raw_path,
-            "-t", str(self.max_duration),
+            "-t", f"{clip_seconds:.2f}",
             "-vf", vf,
             "-c:v", "libx264", "-preset", "veryfast",
             "-b:v", self.bitrate,

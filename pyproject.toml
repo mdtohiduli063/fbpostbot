@@ -18,4 +18,5 @@ dependencies = [
     "requests>=2.33.1",
     "schedule>=1.2.2",
     "uharfbuzz>=0.54.0",
+    "yt-dlp>=2026.3.17",
 ]

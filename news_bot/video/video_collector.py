@@ -94,8 +94,12 @@ class VideoCollector:
             "internet_archive": True,
             "pexels": True,
             "pixabay": True,
+            "youtube": True,
         })
         self.voa_feeds = cfg.get("voa_feeds", DEFAULT_VOA_FEEDS)
+        # Local import avoids a circular dep (youtube_collector imports VideoItem)
+        from .youtube_collector import YouTubeCollector
+        self.youtube_collector = YouTubeCollector(cfg.get("youtube", {}))
 
     # ──────────────────────────── main entrypoint ────────────────────────────
 
@@ -113,6 +117,9 @@ class VideoCollector:
                 tasks.append(self._collect_pexels(session))
             if self.sources_cfg.get("pixabay", True) and self.secrets.get("pixabay_api_key"):
                 tasks.append(self._collect_pixabay(session))
+            if (self.sources_cfg.get("youtube", True)
+                    and self.youtube_collector.enabled):
+                tasks.append(self.youtube_collector.collect())
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
