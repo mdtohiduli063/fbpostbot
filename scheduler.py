@@ -7,7 +7,7 @@ from typing import Awaitable, Callable, List, Optional
 
 import pytz
 
-from .utils.logger import get_logger
+from utils.logger import get_logger
 
 log = get_logger(__name__)
 

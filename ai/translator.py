@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 
 log = get_logger(__name__)
 

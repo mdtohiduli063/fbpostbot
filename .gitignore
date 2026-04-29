@@ -16,10 +16,10 @@ dist/
 .env.local
 
 # Bot runtime data
-news_bot/data/
-news_bot/logs/
-news_bot/assets/fonts/*.ttf
-!news_bot/assets/fonts/.gitkeep
+data/
+logs/
+assets/fonts/*.ttf
+!assets/fonts/.gitkeep
 
 # OS / editor
 .DS_Store

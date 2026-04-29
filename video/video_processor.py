@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 from .video_collector import VideoItem
 
 log = get_logger(__name__)

@@ -17,92 +17,112 @@ Production-grade Python 3.11 bot that:
    `min_seconds_between_posts`). The local image file is deleted right after
    the FB post succeeds (`delete_image_after_post`).
 
-## Architecture
+## Architecture (flat layout — everything at project root)
 
 ```
-news_bot/
-├── collectors/        Async RSS fetcher (+HTML fallback), dedup, trending scorer
-├── ai/                Bangla summarizer (Gemini) + EN→BN translator
-├── poster/            Facebook Graph API, Telegram, WordPress
-├── image_gen/         Pillow 1080×1080 image generator — top single-line ribbon
-│                      headline + category badge + body + engagement hook + footer
-│   └── bangla_renderer.py  HarfBuzz (uharfbuzz) + FreeType (freetype-py) shaper
-│                            — proper Bangla conjuncts & vowel-sign placement,
-│                            because the prebuilt Pillow wheels don't ship libraqm
-├── video/             NEW Video News Bot
-│   ├── video_collector.py    Wikimedia / Internet Archive / Pexels / Pixabay / VOA
-│   ├── video_processor.py    aiohttp download + ffmpeg watermark (top headline
-│   │                         ribbon, bottom credit line, brand stamp)
-│   ├── video_poster.py       Facebook Graph /videos endpoint
-│   └── video_orchestrator.py Translate → process → post pipeline w/ dedup store
-├── utils/
-│   ├── cache_cleaner.py      NEW TTL + size-cap pruner for images/videos/reports
-│   │                         /events/logs (rotates events.jsonl with .old suffix)
-│   ├── logger.py, config_loader.py, storage.py, analytics.py
+.
 ├── main.py            NewsBot orchestrator (image + video pipelines)
 ├── scheduler.py       Async scheduler — fetch, post, video_fetch, video_post,
 │                      cache_clean cycles + daily analytics window
-└── config.json        All knobs (sources, categories, image, video_bot, cache)
+├── config.json        All knobs (sources, categories, image, video_bot, cache)
+├── requirements.txt   Pip dependency list (used by setup.sh on VPS)
+├── pyproject.toml     uv / pip metadata (used by Replit)
+├── setup.sh           One-shot Ubuntu/Debian VPS installer
+├── news-bot.service   systemd unit for 24/7 background running
+├── .env.example       Template for secrets (FB token, Gemini key, …)
+│
+├── collectors/        Async RSS fetcher (+HTML fallback), dedup, trending scorer
+├── ai/                Bangla summarizer (Gemini) + EN→BN translator
+├── poster/            Facebook Graph API
+├── image_gen/         Pillow 1080×1080 image generator
+│   └── bangla_renderer.py  HarfBuzz (uharfbuzz) + FreeType (freetype-py) shaper
+│                            for proper Bangla conjuncts & vowel-sign placement
+├── video/             Video News Bot
+│   ├── video_collector.py    Wikimedia / Internet Archive / Pexels / Pixabay / VOA
+│   ├── video_processor.py    aiohttp download + ffmpeg watermark
+│   ├── video_poster.py       Facebook Graph /videos endpoint
+│   └── video_orchestrator.py Translate → process → post pipeline w/ dedup store
+├── utils/             cache_cleaner, logger, config_loader, storage, analytics
+├── assets/fonts/      NotoSansBengali-Bold.ttf (downloaded by setup.sh)
+├── data/              Runtime: images/, videos/, posted.json, events.jsonl
+└── logs/              Rotating news_bot.log
 ```
 
 ## Runtime
 
-- Workflow `News Bot` runs `uv run python -m news_bot.main` as a background process.
-- Logs: `news_bot/logs/news_bot.log` (rotating 5 MB × 5 backups).
-- Image posts: `news_bot/data/images/news_<category>_<ts>.jpg`.
-- Video posts: `news_bot/data/videos/` (download + watermarked output).
-- Posted-article cache: `news_bot/data/posted.json`; video dedup: `posted_videos.json`.
-- Daily report: `news_bot/data/report_YYYY-MM-DD.json` (23:55 Asia/Dhaka).
+- Workflow `News Bot` runs `uv run python main.py` as a background process on Replit.
+- Logs: `logs/news_bot.log` (rotating 5 MB × 5 backups).
+- Image posts: `data/images/news_<category>_<ts>.jpg`.
+- Video posts: `data/videos/`.
+- Posted-article cache: `data/posted.json`; video dedup: `posted_videos.json`.
+- Daily report: `data/report_YYYY-MM-DD.json` (23:55 Asia/Dhaka).
 
 ## Image post design
 
-- Top: bold dark ribbon with the **single-line headline** (auto-shrinks down to
-  22 px before truncating with an ellipsis).
-- Just below ribbon: small category badge (Bangla label, no emoji because
-  the bundled Bangla font has no color-emoji glyphs).
-- Center: 3-line summary body, centered, with engagement hook line below.
-- Footer: source name → "28 Apr 2026 • News Summary" → "BOT BY TOHIDUL".
+- Top: bold dark ribbon with the **single-line headline**.
+- Just below ribbon: small category badge.
+- Center: 3-line summary body with engagement hook line.
+- Footer: source name → date • brand → "BOT BY TOHIDUL".
 
 ## Video post design
 
-Each posted video is the original clip:
-
-- topped with a dark ribbon containing the translated Bangla headline,
-- a bottom strip with `Credit: <source> • <license>`,
-- a small `BOT BY TOHIDUL` brand stamp,
-- and capped to 90 s / 1080p / 30 fps so it fits Facebook video limits.
-
-The Facebook caption opens with a hook line, the Bangla summary, the original
-title, the source URL, the license, and `#NewsBot #Bangladesh` tags.
+- Top dark ribbon containing the translated Bangla headline,
+- Bottom strip with `Credit: <source> • <license>`,
+- Small `BOT BY TOHIDUL` brand stamp,
+- Capped to 90 s / 1080p / 30 fps for Facebook video limits.
 
 ## Cache cleaner
 
 Runs every `scheduler.cache_clean_interval_minutes` (default 60). For each
-configured directory (`images/`, `videos/`, reports, logs) it deletes files
-older than the TTL, then enforces a max-size cap by deleting the oldest
-remaining files. `events.jsonl` is rotated to `events.jsonl.old` (keeping
-N archives) when it exceeds its size cap.
+configured directory it deletes files older than the TTL, then enforces a
+max-size cap. `events.jsonl` is rotated to `events.jsonl.old`.
 
 ## Configuration
 
-All non-secret tunables: `news_bot/config.json` (`cache`, `video_bot`,
-`scheduler.video_post_interval_minutes`, `scheduler.cache_clean_interval_minutes`).
-Secrets (Facebook page token + page id, Gemini key, optional Pexels /
-Pixabay keys) live in the `credentials` block of `config.json` (or `.env`).
-VOA feeds are disabled by default because the public RSS endpoints
-currently 404; Wikimedia + Internet Archive are the active video sources.
+All non-secret tunables: `config.json`. Secrets (Facebook page token + page
+id, Gemini key, optional Pexels / Pixabay keys) live in the `credentials`
+block of `config.json` (or `.env`).
 
 ## Dependencies
 
-- Python 3.11 managed via `uv` (`pyproject.toml`).
-- pip: aiohttp, feedparser, beautifulsoup4, lxml, requests, Pillow,
-  uharfbuzz, freetype-py, python-dotenv, google-generativeai, schedule,
-  pytz, deep-translator.
-- System: ffmpeg + ffprobe (Nix), Noto Bengali fonts.
-- Bundled font: `news_bot/assets/fonts/NotoSansBengali-Bold.ttf`.
+- Python 3.11 (managed by `uv` on Replit; standard `venv` on VPS).
+- Pip packages (see `requirements.txt`): aiohttp, feedparser, beautifulsoup4,
+  lxml, requests, Pillow, uharfbuzz, freetype-py, python-dotenv,
+  google-generativeai, openai, schedule, pytz, deep-translator, yt-dlp.
+- System: ffmpeg + ffprobe, Noto Bengali fonts, libjpeg/zlib/freetype/
+  harfbuzz/fribidi headers (installed by `setup.sh`).
 
-## Deployment
+## Deployment on a VPS (Ubuntu 22.04+, Debian 12, etc.)
 
-24/7 hosting notes for Ubuntu 22.04+ VPS in `news_bot/README.md`
-(`setup.sh` + `news-bot.service`). On Replit the `News Bot` workflow keeps
-it alive while the workspace is open; for always-on use the deployment flow.
+```bash
+# 1. Clone or upload the project to /opt/news_bot
+sudo mkdir -p /opt/news_bot && sudo chown $USER:$USER /opt/news_bot
+git clone <your-repo> /opt/news_bot      # or scp/rsync your files
+cd /opt/news_bot
+
+# 2. One-shot installer (system pkgs + venv + pip deps + font + .env)
+bash setup.sh
+
+# 3. Edit secrets
+nano .env                                 # or: nano config.json
+
+# 4. Quick test
+.venv/bin/python main.py                  # Ctrl+C to stop
+
+# 5. Install as a 24/7 systemd service
+sudo cp news-bot.service /etc/systemd/system/
+sudo sed -i "s|/opt/news_bot|$PWD|g" /etc/systemd/system/news-bot.service
+sudo sed -i "s|User=newsbot|User=$USER|g; s|Group=newsbot|Group=$USER|g" /etc/systemd/system/news-bot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now news-bot
+sudo journalctl -u news-bot -f            # live logs
+```
+
+`setup.sh` installs everything required so `pip install` does not fail on
+common VPS images: `python3.11`, `python3.11-venv`, build-essential,
+`libjpeg-dev`, `zlib1g-dev`, `libfreetype6-dev`, `libharfbuzz-dev`,
+`libfribidi-dev`, `libxml2-dev`, `libxslt1-dev`, `ffmpeg`, and the Noto
+font family.
+
+On Replit the `News Bot` workflow keeps the bot alive while the workspace is
+open; for always-on hosting use the deployment flow.

@@ -7,7 +7,7 @@ from typing import Optional
 
 import requests
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 from .video_collector import VideoItem
 
 log = get_logger(__name__)

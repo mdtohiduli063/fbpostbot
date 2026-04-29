@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.python-launcher
     pkgs.zlib
     pkgs.libjpeg
     pkgs.freetype

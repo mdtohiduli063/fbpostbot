@@ -22,7 +22,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 from .video_collector import VideoItem
 
 log = get_logger(__name__)

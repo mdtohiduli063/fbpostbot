@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from ..utils.logger import get_logger
+from utils.logger import get_logger
 from .bangla_renderer import BanglaTextRenderer, get_renderer
 
 log = get_logger(__name__)
@@ -36,7 +36,6 @@ log = get_logger(__name__)
 BANGLA_FONT_CANDIDATES = [
     "assets/fonts/NotoSansBengali-Bold.ttf",
     "assets/fonts/NotoSansBengali-Regular.ttf",
-    "news_bot/assets/fonts/NotoSansBengali-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansBengali-Bold.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf",
     "/usr/share/fonts/noto/NotoSansBengali-Regular.ttf",

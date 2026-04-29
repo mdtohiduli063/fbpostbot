@@ -4,10 +4,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from ..ai.summarizer import CATEGORY_EMOJI
-from ..ai.translator import Translator
-from ..utils.logger import get_logger
-from ..utils.storage import ArticleStore
+from ai.summarizer import CATEGORY_EMOJI
+from ai.translator import Translator
+from utils.logger import get_logger
+from utils.storage import ArticleStore
 from .video_collector import VideoCollector, VideoItem
 from .video_poster import VideoPoster
 from .video_processor import VideoProcessor

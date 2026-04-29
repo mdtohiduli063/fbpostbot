@@ -1,11 +1,11 @@
 """One-shot test command for the Video News Bot.
 
 Usage:
-    python -m news_bot.test_video           # collect + post 1 video to FB
-    python -m news_bot.test_video --dry-run # collect + process, but do NOT post
+    python test_video.py           # collect + post 1 video to FB
+    python test_video.py --dry-run # collect + process, but do NOT post
 
 What it does:
-    1. Loads news_bot/config.json (with secrets resolved from env)
+    1. Loads config.json (with secrets resolved from env)
     2. Spins up a VideoBot instance in isolation (no scheduler, no news bot)
     3. Runs ONE fetch_cycle to populate the queue
     4. Runs ONE post_cycle to publish a single video (or skips publish in --dry-run)
@@ -21,9 +21,9 @@ import asyncio
 import os
 import sys
 
-from .utils.config_loader import load_config
-from .utils.logger import get_logger, setup_logging
-from .video.video_orchestrator import VideoBot
+from utils.config_loader import load_config
+from utils.logger import get_logger, setup_logging
+from video.video_orchestrator import VideoBot
 
 log = get_logger("news_bot.test_video")
 

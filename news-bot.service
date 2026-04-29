@@ -1,24 +1,25 @@
 [Unit]
-Description=AI News Summary Bot (Bangla)
+Description=AI News Summary Bot (Bangla — Image + Video pipelines)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# CHANGE these two paths to match your deployment:
+# CHANGE these paths + user to match your deployment.
+# (setup.sh prints the exact sed commands to do this in one go.)
 WorkingDirectory=/opt/news_bot
-ExecStart=/opt/news_bot/.venv/bin/python -m news_bot.main
+ExecStart=/opt/news_bot/.venv/bin/python /opt/news_bot/main.py
 
-# Run as a non-root user you create:  sudo useradd -r -s /bin/false newsbot
 User=newsbot
 Group=newsbot
 
+# Auto-restart on crash
 Restart=always
 RestartSec=10
 StartLimitIntervalSec=300
 StartLimitBurst=10
 
-# Logs go to journald; rotating file handler also writes to logs/news_bot.log
+# Logs → journald (also written to logs/news_bot.log by the app)
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=news-bot

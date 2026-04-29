@@ -8,8 +8,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from ..collectors.rss_collector import Article
-from ..utils.logger import get_logger
+from collectors.rss_collector import Article
+from utils.logger import get_logger
 from .translator import Translator
 
 log = get_logger(__name__)
