@@ -6,7 +6,7 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from collectors.deduplicator import Deduplicator, article_key, title_key
 from collectors.rss_collector import Article, RSSCollector
@@ -20,7 +20,9 @@ from utils.cache_cleaner import CacheCleaner
 from utils.config_loader import load_config
 from utils.logger import get_logger, setup_logging
 from utils.storage import ArticleStore
+from video.news_video_maker import NewsVideoMaker
 from video.video_orchestrator import VideoBot
+from video.video_poster import VideoPoster
 
 
 class NewsBot:
@@ -41,6 +43,7 @@ class NewsBot:
         self.collector = RSSCollector(
             cfg["collection"]["sources"],
             max_per_source=cfg["collection"]["max_articles_per_source"],
+            max_age_hours=int(cfg["collection"].get("max_article_age_hours", 24)),
         )
         self.trending = TrendingScorer(cfg["viral_keywords"], cfg["categories"])
         self.summarizer = Summarizer(cfg["ai"], cfg["secrets"])
@@ -50,14 +53,32 @@ class NewsBot:
             logo_path=general.get("page_logo_path"),
         )
 
-        # Single posting channel: Facebook (image)
-        self.fb = FacebookPoster(
-            page_id=cfg["secrets"]["facebook_page_id"],
-            access_token=cfg["secrets"]["facebook_page_access_token"],
-            auto_first_comment=cfg["facebook"]["auto_first_comment"],
-        ) if cfg["facebook"]["enabled"] else FacebookPoster("", "")
+        # Facebook posters: photo path is kept as fallback, video path is
+        # the new default for every news article.
+        page_id = cfg["secrets"]["facebook_page_id"] if cfg["facebook"]["enabled"] else ""
+        token = cfg["secrets"]["facebook_page_access_token"] if cfg["facebook"]["enabled"] else ""
 
-        # Video bot (independent pipeline)
+        self.fb = FacebookPoster(
+            page_id=page_id, access_token=token,
+            auto_first_comment=cfg["facebook"]["auto_first_comment"],
+        )
+        self.fb_video = VideoPoster(page_id=page_id, access_token=token)
+
+        # NEW: news video maker (image + random BG audio → 15-20s mp4)
+        nvm_cfg = cfg.get("news_video", {})
+        audio_dir = os.path.join(
+            os.path.dirname(general["data_dir"]),
+            nvm_cfg.get("audio_dir", "audio"),
+        )
+        self.news_video_enabled = bool(nvm_cfg.get("enabled", True))
+        self.delete_video_after_post = bool(nvm_cfg.get("delete_video_after_post", True))
+        self.news_video_maker = NewsVideoMaker(
+            nvm_cfg,
+            output_dir=os.path.join(general["data_dir"], "videos"),
+            audio_dir=audio_dir,
+        )
+
+        # Video bot (independent pipeline — YouTube/Wikimedia/etc. clips)
         self.video_bot = VideoBot(
             cfg.get("video_bot", {}), cfg["secrets"],
             data_dir=general["data_dir"],
@@ -182,7 +203,10 @@ class NewsBot:
     # ---------- helpers ----------
 
     async def _publish_one(self, art: Article, score: float, category: str) -> bool:
-        """Returns True if the article was successfully published."""
+        """Pipeline: summarize → image → 15-20s video → Facebook video post.
+
+        Returns True if the article was successfully published.
+        """
         if self.store.has(article_key(art)) or self.store.has(title_key(art)):
             return False
 
@@ -197,57 +221,97 @@ class NewsBot:
             return False
 
         self.log.info("📝 Headline: %s", summary.headline)
-        self.log.info("📝 Body: %s", summary.body[:120])
+        self.log.info("📝 Body: %s", summary.body[:160])
 
-        # Generate image (top single-line headline + body + engagement)
+        # 1. Generate the clean news-card image (headline + body only)
         image_path = await loop.run_in_executor(
             None, self.image_gen.generate,
             summary.headline, summary.body, summary.category,
-            None,                # footer (default = date • brand)
-            summary.source_name,
-            summary.engagement,
         )
         if not image_path:
             self.log.warning("No image produced; skipping")
             return False
 
         caption = summary.caption()
-
         success = False
-        if self.fb.is_ready():
+        video_path: Optional[str] = None
+
+        # 2. Build the news video (image + random BG audio → 15-20 s mp4)
+        if self.news_video_enabled and self.news_video_maker.is_ready():
+            video_path = await loop.run_in_executor(
+                None, self.news_video_maker.make, image_path, summary.category,
+            )
+        else:
+            self.log.info("News video disabled — falling back to photo post")
+
+        # 3. Publish: prefer video; if it failed, gracefully fall back to photo
+        if video_path and self.fb_video.is_ready():
+            post_id = await loop.run_in_executor(
+                None,
+                self._post_news_video, video_path, summary.headline, caption,
+            )
+            if post_id:
+                success = True
+            else:
+                self.log.warning("Video upload failed — falling back to photo post")
+
+        if not success and self.fb.is_ready():
             post_id = await loop.run_in_executor(
                 None, self.fb.post_photo, image_path, caption, art.link,
             )
             if post_id:
                 success = True
             else:
-                self.log.warning("Facebook publish failed for: %s", summary.headline[:60])
-        else:
+                self.log.warning("Facebook publish failed for: %s",
+                                 summary.headline[:60])
+
+        if not success and not self.fb.is_ready():
             self.log.warning("Facebook not configured — content kept local only")
             success = True  # treat as ok so we still mark seen + cleanup
 
         if not success:
+            self._safe_remove(video_path)
             return False
 
-        # Mark seen + record analytics
+        # 4. Mark seen + record analytics
         self.store.add(article_key(art))
         self.store.add(title_key(art))
         self.dedup.mark_seen(art)
         self.analytics.record(
             "posted", source=art.source, category=category, score=round(score, 2),
+            kind=("video" if video_path else "image"),
         )
 
-        # Delete the local image after a successful post (frees disk fast)
+        # 5. Cleanup local artefacts to free disk space
         if self.delete_image_after_post:
-            try:
-                if image_path and os.path.isfile(image_path):
-                    os.remove(image_path)
-                    self.log.info("🧹 Image removed: %s", os.path.basename(image_path))
-            except Exception as e:
-                self.log.warning("Could not delete image %s: %s", image_path, e)
+            self._safe_remove(image_path, label="Image")
+        if self.delete_video_after_post:
+            self._safe_remove(video_path, label="Video")
 
         await asyncio.sleep(2)
         return True
+
+    def _post_news_video(self, video_path: str, headline: str,
+                         caption: str) -> Optional[str]:
+        """Wrap the video poster so it accepts (path, headline, caption)."""
+        # The VideoPoster expects a VideoItem — build a minimal one in-place.
+        from video.video_collector import VideoItem
+        item = VideoItem(
+            title=headline, description="", video_url="", page_url="",
+            source="News Bot", license_name="", author="",
+            published=None, duration_seconds=0, thumbnail_url="",
+        )
+        return self.fb_video.post_video(video_path, item, caption)
+
+    def _safe_remove(self, path: Optional[str], label: str = "File") -> None:
+        if not path:
+            return
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                self.log.info("🧹 %s removed: %s", label, os.path.basename(path))
+        except Exception as e:
+            self.log.warning("Could not delete %s %s: %s", label.lower(), path, e)
 
     def _log_status(self) -> None:
         self.log.info("─" * 60)

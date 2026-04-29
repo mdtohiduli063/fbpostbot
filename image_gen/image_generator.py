@@ -1,21 +1,20 @@
 """
-1080×1080 news-card image generator with audience-attractive layout.
+1080×1080 news-card image generator — clean, headline + summary only.
 
 Layout (top → bottom)
 ─────────────────────
   ┌────────────────────────────────────────────┐
-  │ ▰▰ 1-LINE HEADLINE (top ribbon, big bold) ▰│  ← always single line, top
+  │ ▰▰ 1-LINE HEADLINE (top ribbon, big bold) ▰│
   │  [category badge]                          │
   │                                            │
-  │     summary body (3-7 lines, premium)      │
-  │     auto-shrunk to fit the card            │
+  │     detailed summary body                  │
+  │     (auto-shrunk to fit, up to ~10 lines)  │
   │                                            │
-  │     ─── divider ───                        │
-  │     💬 engagement hook                     │
-  │                                            │
-  │  date • brand              source: <site>  │
-  │            BOT BY TOHIDUL                  │
   └────────────────────────────────────────────┘
+
+Everything below the body has been intentionally removed: no divider,
+no engagement hook, no date / brand line, no source line, no bot
+credit — the image stays clean for the video pipeline that wraps it.
 """
 from __future__ import annotations
 
@@ -132,10 +131,17 @@ class ImageGenerator:
 
     def generate(self, headline: str, body: str = "",
                  category: str = "general",
-                 footer: Optional[str] = None,
-                 source_name: Optional[str] = None,
-                 engagement: Optional[str] = None) -> Optional[str]:
-        """Render the news card. Headline always shown as a single line at top."""
+                 footer: Optional[str] = None,         # kept for back-compat (ignored)
+                 source_name: Optional[str] = None,    # kept for back-compat (ignored)
+                 engagement: Optional[str] = None      # kept for back-compat (ignored)
+                 ) -> Optional[str]:
+        """Render the news card. Headline single-line on top + body fills the rest.
+
+        ``footer`` / ``source_name`` / ``engagement`` are accepted for
+        backwards compatibility but no longer drawn — the new clean layout
+        is just headline + body (everything that used to be below the
+        divider has been removed).
+        """
         try:
             palette = CATEGORY_PALETTE.get(category, CATEGORY_PALETTE["general"])
             accent  = CATEGORY_ACCENT.get(category, CATEGORY_ACCENT["general"])
@@ -160,28 +166,21 @@ class ImageGenerator:
             self._draw_badge(draw, img, badge_text,
                              x=self.padding, y=ribbon_h + 28, accent=accent)
 
-            # 4. Body text block (centered between badge and footer)
+            # 4. Body text — uses the entire space below the badge to ~36px
+            # from the bottom edge. No divider, no footer, no credit line.
             self._draw_body_block(draw, img, body or "",
                                   zone_top=ribbon_h + 130,
-                                  zone_bot=self.height - 200,
-                                  engagement=engagement)
+                                  zone_bot=self.height - 60)
 
-            # 5. Two-row footer
-            footer_main = footer or (
-                datetime.now().strftime("%d %b %Y") + "  •  " + self.brand_name
-            )
-            self._draw_footer(draw, img, footer_main, self.bot_credit,
-                              source_name=source_name)
-
-            # 6. Bottom accent bar
+            # 5. Bottom accent bar (decorative — not text)
             draw.rectangle(
                 [0, self.height - 10, self.width, self.height], fill=palette[2],
             )
 
-            # 7. Optional logo (top-right corner, below ribbon)
+            # 6. Optional logo (top-right corner, below ribbon)
             self._paste_logo(img, top_offset=ribbon_h + 24)
 
-            # 8. Save
+            # 7. Save
             img = img.convert("RGB")
             ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             out_path = os.path.join(self.output_dir, f"news_{category}_{ts}.jpg")
@@ -358,46 +357,36 @@ class ImageGenerator:
                         fill=(20, 20, 20))
 
     def _draw_body_block(self, draw: ImageDraw.ImageDraw, img: Image.Image,
-                         body: str, zone_top: int, zone_bot: int,
-                         engagement: Optional[str]) -> None:
+                         body: str, zone_top: int, zone_bot: int) -> None:
+        """Render the summary body. Uses the entire vertical zone — no
+        divider, no engagement hook, no footer below.
+        """
         zone_h = zone_bot - zone_top
         body = (body or "").strip()
-        if not body:
+        if not body or zone_h < 80:
             return
+
+        # How many lines can plausibly fit at this body size?
+        # Body line-height factor is 1.42; reserve a little breathing room.
+        # Allow up to 12 lines so longer summaries can fit the new clean
+        # layout without truncation.
+        max_lines_by_zone = max(4, int(zone_h / (self.body_size * 1.42)))
+        max_lines = min(12, max_lines_by_zone)
 
         b_size, b_lines = self._fit_text(
             body, max_width=self.width - 2 * self.padding - 40,
-            initial_size=self.body_size, min_size=24, max_lines=8,
+            initial_size=self.body_size, min_size=22, max_lines=max_lines,
         )
         b_line_h = int(b_size * 1.42)
         body_block_h = b_line_h * len(b_lines)
 
-        e_size = 0
-        eng_block_h = 0
-        if engagement:
-            e_size, _ = self._fit_text(
-                engagement, max_width=self.width - 2 * self.padding,
-                initial_size=self.body_size - 4, min_size=22, max_lines=2,
-            )
-            eng_block_h = int(e_size * 1.4) + 30  # divider gap
+        # Top-align with a small offset for breathing room — looks better
+        # than vertical centering when the body is long.
+        start_y = zone_top + max(0, (zone_h - body_block_h) // 4)
 
-        total = body_block_h + eng_block_h
-        start_y = zone_top + max(0, (zone_h - total) // 2)
-
-        # Body lines (centered)
         for i, ln in enumerate(b_lines):
             self._bn_render_centered(img, ln, y=start_y + i * b_line_h,
                                      size=b_size, fill=(245, 245, 245),
-                                     shadow=True, shadow_offset=2)
-
-        # Divider + engagement
-        if engagement and e_size:
-            cy = start_y + body_block_h + 12
-            cx = self.width // 2
-            draw.rectangle([cx - 70, cy, cx + 70, cy + 3],
-                           fill=(255, 255, 255, 180))
-            self._bn_render_centered(img, "» " + engagement, y=cy + 18,
-                                     size=e_size, fill=(255, 235, 160),
                                      shadow=True, shadow_offset=2)
 
     def _draw_footer(self, draw: ImageDraw.ImageDraw, img: Image.Image,

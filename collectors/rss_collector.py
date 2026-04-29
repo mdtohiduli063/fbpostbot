@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -48,13 +48,17 @@ class RSSCollector:
     """Fetch articles from configured RSS sources concurrently."""
 
     def __init__(self, sources: List[Dict[str, Any]], max_per_source: int = 15,
-                 timeout_seconds: int = 20):
+                 timeout_seconds: int = 20,
+                 max_age_hours: int = 24):
         self.sources = [s for s in sources if s.get("enabled", True)]
         self.max_per_source = max_per_source
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
+        # Articles older than this many hours are dropped — keeps the page
+        # feed fresh and prevents stale news from being posted.
+        self.max_age_hours = max(1, int(max_age_hours))
 
     async def collect_all(self) -> List[Article]:
-        """Fetch all enabled sources in parallel."""
+        """Fetch all enabled sources in parallel and return only fresh articles."""
         async with aiohttp.ClientSession(headers=DEFAULT_HEADERS, timeout=self.timeout) as session:
             tasks = [self._fetch_source(session, src) for src in self.sources]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -65,8 +69,33 @@ class RSSCollector:
                 log.warning("Source '%s' failed: %s", src.get("name"), res)
                 continue
             articles.extend(res)
-        log.info("Collected %d articles from %d sources", len(articles), len(self.sources))
+
+        before = len(articles)
+        articles = self._only_recent(articles)
+        # Newest first so the trending scorer + queue prefer the freshest items.
+        articles.sort(
+            key=lambda a: a.published or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        log.info("Collected %d articles from %d sources (kept %d fresh, ≤%dh old)",
+                 before, len(self.sources), len(articles), self.max_age_hours)
         return articles
+
+    def _only_recent(self, articles: List[Article]) -> List[Article]:
+        """Drop items older than ``max_age_hours``. Items without a published
+        timestamp are kept (we cannot judge their age)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.max_age_hours)
+        kept: List[Article] = []
+        for a in articles:
+            if a.published is None:
+                kept.append(a)
+                continue
+            pub = a.published
+            if pub.tzinfo is None:
+                pub = pub.replace(tzinfo=timezone.utc)
+            if pub >= cutoff:
+                kept.append(a)
+        return kept
 
     async def _fetch_source(self, session: aiohttp.ClientSession,
                             src: Dict[str, Any]) -> List[Article]:

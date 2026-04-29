@@ -36,7 +36,14 @@ class YouTubeCollector:
         self.enabled = bool(cfg.get("enabled", False))
         self.channels: List[Dict[str, str]] = cfg.get("channels", [])
         self.max_per_channel = int(cfg.get("max_per_channel", 3))
-        self.segment_seconds = int(cfg.get("segment_seconds", 15))
+        # Per-clip duration is randomised between segment_seconds_min..max,
+        # so each repost feels different (15-20 s by default).
+        self.segment_seconds_min = int(cfg.get("segment_seconds_min",
+                                               cfg.get("segment_seconds", 15)))
+        self.segment_seconds_max = int(cfg.get("segment_seconds_max",
+                                               cfg.get("segment_seconds", 20)))
+        if self.segment_seconds_max < self.segment_seconds_min:
+            self.segment_seconds_max = self.segment_seconds_min
         # Hard upper bound for safety (longer = higher copyright risk)
         self.max_segment_seconds = int(cfg.get("max_segment_seconds", 60))
         # Skip a few seconds of channel intro / sting when no heatmap exists
@@ -159,8 +166,16 @@ class YouTubeCollector:
     # ─── most-replayed window picker ───
     def _pick_segment(self, info: Dict[str, Any],
                       duration: int) -> tuple[float, float]:
-        """Returns (start_seconds, segment_seconds)."""
-        target = float(min(self.segment_seconds, self.max_segment_seconds))
+        """Returns (start_seconds, segment_seconds).
+
+        Each call randomises the segment length within
+        [segment_seconds_min, segment_seconds_max] so reposts feel fresh.
+        """
+        import random as _random
+        target = float(_random.randint(
+            self.segment_seconds_min, self.segment_seconds_max,
+        ))
+        target = min(target, float(self.max_segment_seconds))
         if duration <= 0:
             return 0.0, target
 

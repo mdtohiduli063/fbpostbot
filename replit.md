@@ -2,9 +2,13 @@
 
 Production-grade Python 3.11 bot that:
 
-1. Pulls Bangladeshi news from RSS / HTML sources, summarizes in Bangla
-   (Gemini, with safe fallback when quota is hit), generates a modern 1080×1080
-   image post, and publishes to Facebook (Telegram / WordPress optional).
+1. Pulls Bangladeshi news from RSS / HTML sources (filtered to **only fresh
+   articles** — see `collection.max_article_age_hours`), summarizes in Bangla
+   (Gemini, with safe fallback when quota is hit), generates a clean 1080×1080
+   image post (bold headline + 6–10 line plain-Bangla body, **nothing else**),
+   then turns that image into a **15–20 s vertical video** with a randomly
+   chosen background-music track from `audio/`, and publishes the video to
+   Facebook. If video upload fails, it gracefully falls back to a photo post.
 2. Discovers **copyright-free news videos** (Wikimedia Commons, Internet
    Archive, optional Pexels / Pixabay / VOA) on Bangladesh / South Asia
    topics, watermarks them with full credit + brand stamp via ffmpeg, and
@@ -57,12 +61,34 @@ Production-grade Python 3.11 bot that:
 - Posted-article cache: `data/posted.json`; video dedup: `posted_videos.json`.
 - Daily report: `data/report_YYYY-MM-DD.json` (23:55 Asia/Dhaka).
 
-## Image post design
+## Image post design (clean, video-ready)
 
 - Top: bold dark ribbon with the **single-line headline**.
 - Just below ribbon: small category badge.
-- Center: 3-line summary body with engagement hook line.
-- Footer: source name → date • brand → "BOT BY TOHIDUL".
+- Body: 6–10 line plain-Bangla summary (5W answered) filling the rest.
+- **No divider, no engagement line, no source/date, no BOT BY TOHIDUL credit
+  drawn on the image itself** — the image is the visual frame for the video,
+  while every other piece of metadata lives in the post caption.
+
+## News video pipeline (default for every news article)
+
+1. Image generated as above (1080×1080).
+2. `video/news_video_maker.py` runs ffmpeg:
+   - Loops the still image with a slow Ken-Burns zoom.
+   - Trims a randomly chosen audio file from `audio/` to clip length and
+     applies fade-in / fade-out.
+   - Picks a random duration in `news_video.duration_min_seconds` …
+     `duration_max_seconds` (default **15–20 s**).
+   - Encodes to H.264 + AAC MP4, faststart, ready for Facebook upload.
+3. `VideoPoster` uploads to the Page; on any failure the bot automatically
+   falls back to a regular photo post so nothing is lost.
+4. Local image + video files are deleted right after a successful post.
+
+### `audio/` folder
+
+Drop `NEWSAUDIO1.mp3`, `NEWSAUDIO2.mp3` … here. One track is chosen at
+random per video. If empty, the video is rendered silent. See
+`audio/README.md`.
 
 ## Video post design
 

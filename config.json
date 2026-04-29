@@ -20,6 +20,7 @@
   "collection": {
     "fetch_interval_minutes": 2,
     "max_articles_per_source": 15,
+    "max_article_age_hours": 12,
     "duplicate_window_hours": 48,
     "sources": [
       {
@@ -314,6 +315,20 @@
     "enabled": true,
     "auto_first_comment": false
   },
+  "news_video": {
+    "enabled": true,
+    "audio_dir": "audio",
+    "delete_video_after_post": true,
+    "duration_min_seconds": 15,
+    "duration_max_seconds": 20,
+    "target_fps": 30,
+    "video_bitrate": "1800k",
+    "audio_bitrate": "128k",
+    "audio_fade_seconds": 1.2,
+    "audio_volume": 0.85,
+    "zoom_strength": 0.08,
+    "ffmpeg_timeout_seconds": 180
+  },
   "video_bot": {
     "enabled": true,
     "max_posts_per_run": 1,
@@ -362,7 +377,8 @@
         }
       ],
       "max_per_channel": 2,
-      "segment_seconds": 15,
+      "segment_seconds_min": 15,
+      "segment_seconds_max": 20,
       "max_segment_seconds": 60,
       "intro_skip_seconds": 5,
       "min_video_duration_seconds": 30,
