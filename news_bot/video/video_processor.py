@@ -135,41 +135,14 @@ class VideoProcessor:
             self.output_dir, f"video_{category}_{ts}.mp4",
         )
 
-        # Build a video filter graph:
-        #  • scale + pad to target square frame
-        #  • headline ribbon at top (semi-transparent black bar + text)
-        #  • credit ribbon at bottom (semi-transparent bar + credit line)
-        #  • brand stamp on the right
-        font_arg = self._font_arg()
-
-        head_text = self._escape_drawtext(self._truncate(headline, 70))
-        credit_text = self._escape_drawtext(self._truncate(item.credit_line(), 90))
-        brand_text = self._escape_drawtext(self.bot_credit)
-
+        # Build a clean video filter graph — NO text overlays on the frame.
+        # All headline / source / license / brand info now lives in the FB
+        # caption only, so the video itself stays visually clean.
         tw, th = self.target_width, self.target_height
-
-        # Scale and pad to square keeping aspect ratio
         vf_parts = [
             f"scale={tw}:{th}:force_original_aspect_ratio=decrease",
             f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black",
             f"fps={self.target_fps}",
-            # Top ribbon
-            f"drawbox=y=0:width=iw:height=130:color=black@0.65:t=fill",
-            (f"drawtext={font_arg}text='{head_text}':"
-             f"fontsize=46:fontcolor=white:"
-             f"x=(w-text_w)/2:y=40:"
-             f"shadowcolor=black@0.85:shadowx=2:shadowy=2"),
-            # Bottom credit ribbon
-            f"drawbox=y=h-95:width=iw:height=95:color=black@0.65:t=fill",
-            (f"drawtext={font_arg}text='{credit_text}':"
-             f"fontsize=28:fontcolor=white:"
-             f"x=(w-text_w)/2:y=h-65:"
-             f"shadowcolor=black@0.85:shadowx=2:shadowy=2"),
-            # Brand stamp (right side)
-            (f"drawtext={font_arg}text='{brand_text}':"
-             f"fontsize=22:fontcolor=yellow:"
-             f"x=w-text_w-20:y=h-30:"
-             f"shadowcolor=black@0.85:shadowx=2:shadowy=2"),
         ]
         vf = ",".join(vf_parts)
 
