@@ -269,22 +269,71 @@ class Summarizer:
     def _pick_closer(cls) -> str:
         return random.choice(cls._CLOSERS)
 
+    # Category-specific Bangla intro lines for the fallback summary
+    _FALLBACK_INTROS: Dict[str, str] = {
+        "breaking":      "🚨 জরুরি খবর — ",
+        "politics":      "🏛️ রাজনৈতিক খবর: ",
+        "cricket":       "🏏 ক্রিকেট আপডেট: ",
+        "sports":        "🏆 খেলাধুলার খবর: ",
+        "entertainment": "🎬 বিনোদন জগতের খবর: ",
+        "government":    "📜 সরকারি ঘোষণা: ",
+        "price":         "💰 দাম-দর সংক্রান্ত খবর: ",
+        "exam_jobs":     "🎓 পরীক্ষা ও চাকরির খবর: ",
+        "tech":          "💻 প্রযুক্তি জগতের খবর: ",
+        "world":         "🌍 আন্তর্জাতিক খবর: ",
+        "general":       "📰 সর্বশেষ খবর: ",
+    }
+
+    @staticmethod
+    def _split_sentences_bn(text: str) -> List[str]:
+        """Split Bangla / mixed text into clean sentences using ।, ., ?, !"""
+        # Normalize whitespace + remove obvious junk (read more, source tags, urls)
+        cleaned = re.sub(r"https?://\S+", "", text)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # Drop common boilerplate suffixes
+        cleaned = re.sub(r"(বিস্তারিত পড়ুন|আরও পড়ুন|Read more|Click here)[\s:.।]*$",
+                         "", cleaned, flags=re.IGNORECASE)
+        # Split, keep pieces longer than 15 chars
+        parts = re.split(r"(?<=[।.!?])\s+", cleaned)
+        return [p.strip() for p in parts if len(p.strip()) > 15]
+
     def _fallback_summary(self, article: Article, title: str, body: str,
                           category: str) -> Summary:
-        """When AI is unavailable, build a richer fallback post."""
-        # Try to use the full RSS body, trimmed to ~600 chars at sentence boundary
-        short_body = body or title
-        if len(short_body) > 600:
-            cut = short_body[:600]
-            last_period = max(cut.rfind("।"), cut.rfind("."), cut.rfind("?"))
-            if last_period > 200:
-                short_body = cut[: last_period + 1]
-            else:
-                short_body = cut + "…"
+        """When AI is unavailable, build a richer fallback post.
+
+        Strategy: take first 2–3 meaningful sentences from the RSS body
+        (not just a char-count slice) and prepend a category-specific intro
+        so the body never duplicates the headline word-for-word.
+        """
+        clean_title = re.sub(r"\s+", " ", title).strip()[:200]
+
+        sentences = self._split_sentences_bn(body) if body else []
+        # Drop the first sentence if it's just the title repeated
+        if sentences and sentences[0].rstrip("।.!?").strip() == clean_title.rstrip("।.!?").strip():
+            sentences = sentences[1:]
+
+        if sentences:
+            picked: List[str] = []
+            total = 0
+            for s in sentences[:5]:
+                if total + len(s) > 500:
+                    break
+                picked.append(s)
+                total += len(s)
+            short_body = " ".join(picked) if picked else sentences[0][:500]
+        else:
+            # No usable body — synthesize a minimal informative line
+            short_body = f"{clean_title}। বিস্তারিত পড়তে নিচের লিংকে চাপুন।"
+
+        intro = self._FALLBACK_INTROS.get(category, self._FALLBACK_INTROS["general"])
+        # Avoid double-emoji if body already begins with one
+        if not short_body.startswith(("🚨", "🏛", "🏏", "🎬", "📜", "💰", "🎓", "💻", "🌍", "🏆", "📰")):
+            short_body = intro + short_body
+
         return Summary(
-            headline=title[:200],
+            headline=clean_title,
             body=short_body,
-            title=title[:200],
+            title=clean_title,
             hashtags=self._merge_hashtags([], category),
             category=category,
             source_url=article.link,
