@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -61,7 +62,7 @@ class Summary:
             self.body.strip(),
         ]
         if self.engagement:
-            parts += ["", f"💬 আপনার মতামত: {self.engagement}"]
+            parts += ["", self.engagement]
         parts += [
             "",
             f"📡 সূত্র: {self.source_name}",
@@ -84,7 +85,7 @@ PROMPT_TEMPLATE = """তুমি একজন অভিজ্ঞ বাংল�
 - কে, কী, কোথায়, কখন, কেন — এই ৫টি প্রশ্নের উত্তর সারাংশে থাকতেই হবে
 - ভাষা সহজ, প্রাণবন্ত, আবেগপ্রবণ — ফেসবুকে যেমন পাঠক পড়ে
 - ৬-৮টি প্রাসঙ্গিক হ্যাশট্যাগ (বেশিরভাগ বাংলা, ২-৩টি ইংরেজি ট্রেন্ডিং)
-- শেষে পাঠকের জন্য একটি প্রশ্ন বা মতামত আমন্ত্রণ — কমেন্ট বাড়ানোর জন্য
+- শেষে একটি ছোট, আকর্ষণীয় ক্লোজিং লাইন — পাঠককে পেজ ফলো করতে / শেয়ার করতে / আপডেট থাকতে অনুপ্রাণিত করবে; কখনোই কমেন্ট চাইবে না, কোনো প্রশ্ন করবে না
 - কোনো ভুল তথ্য বানিয়ো না, মূল সংবাদের বাইরে যেও না
 - শুধুমাত্র বৈধ JSON আউটপুট দাও, অন্য কিছু না
 
@@ -102,7 +103,7 @@ JSON ফরম্যাটে আউটপুট দাও:
   "headline": "আকর্ষণীয় বাংলা শিরোনাম",
   "body": "৪-৬ লাইনের বিস্তারিত সারাংশ যেখানে কে, কী, কোথায়, কেন তথ্য থাকবে",
   "title": "ক্লিক-যোগ্য পরিষ্কার টাইটেল",
-  "engagement": "একটি ছোট প্রশ্ন বা মতামত আমন্ত্রণ",
+  "engagement": "একটি ছোট ফলো/শেয়ার আমন্ত্রণ লাইন (কমেন্ট চাইবে না)",
   "hashtags": ["#ট্যাগ১", "#ট্যাগ২", "#ট্যাগ৩"]
 }}"""
 
@@ -254,6 +255,20 @@ class Summarizer:
         except json.JSONDecodeError:
             return None
 
+    # Closing call-to-action lines — never asks for comments.
+    _CLOSERS = (
+        "🔔 প্রতিদিনের গুরুত্বপূর্ণ খবর সবার আগে পেতে পেজটি ফলো করে রাখুন।",
+        "📤 খবরটি গুরুত্বপূর্ণ মনে হলে প্রিয়জনদের সাথে শেয়ার করুন।",
+        "✨ সঠিক ও দ্রুত সংবাদ পেতে আমাদের সাথে থাকুন।",
+        "🚀 এমন আরও খবরের আপডেট পেতে পেজটি ফলো করুন।",
+        "🌟 পরিবার-বন্ধুদের সাথে শেয়ার করে সবাইকে জানিয়ে দিন।",
+        "🔥 সর্বশেষ সংবাদ মিস করতে না চাইলে পেজটি ফলো দিয়ে রাখুন।",
+    )
+
+    @classmethod
+    def _pick_closer(cls) -> str:
+        return random.choice(cls._CLOSERS)
+
     def _fallback_summary(self, article: Article, title: str, body: str,
                           category: str) -> Summary:
         """When AI is unavailable, build a richer fallback post."""
@@ -274,5 +289,5 @@ class Summarizer:
             category=category,
             source_url=article.link,
             source_name=article.source,
-            engagement="আপনি কী মনে করেন? কমেন্টে জানান।",
+            engagement=self._pick_closer(),
         )

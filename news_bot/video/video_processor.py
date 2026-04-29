@@ -92,9 +92,18 @@ class VideoProcessor:
         path = os.path.join(self._raw_dir, fname)
 
         timeout = aiohttp.ClientTimeout(total=self.download_timeout)
+        # Wikimedia + Internet Archive reject blank or "bot" UAs with 403,
+        # so we send a browser-style UA.
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "*/*",
+        }
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(item.video_url) as resp:
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(item.video_url, allow_redirects=True) as resp:
                     if resp.status != 200:
                         log.warning("Video download HTTP %d for %s",
                                     resp.status, item.video_url[:80])

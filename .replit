@@ -28,3 +28,6 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "uv run python -m news_bot.main"
+
+[deployment]
+deploymentTarget = "cloudrun"
