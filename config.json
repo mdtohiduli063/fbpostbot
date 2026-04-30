@@ -308,7 +308,7 @@
     "delete_image_after_post": true,
     "max_posts_per_run": 8,
     "min_minutes_between_posts": 0,
-    "video_post_interval_minutes": 180,
+    "video_post_interval_minutes": 5,
     "cache_clean_interval_minutes": 60
   },
   "facebook": {
