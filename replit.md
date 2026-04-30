@@ -33,7 +33,7 @@ Production-grade Python 3.11 bot that:
 ├── pyproject.toml     uv / pip metadata (used by Replit)
 ├── setup.sh           One-shot Ubuntu/Debian VPS installer
 ├── news-bot.service   systemd unit for 24/7 background running
-├── .env.example       Template for secrets (FB token, Gemini key, …)
+├── run.sh             Quick launcher (activates venv, runs main.py)
 │
 ├── collectors/        Async RSS fetcher (+HTML fallback), dedup, trending scorer
 ├── ai/                Bangla summarizer (Gemini) + EN→BN translator
@@ -105,15 +105,16 @@ max-size cap. `events.jsonl` is rotated to `events.jsonl.old`.
 
 ## Configuration
 
-All non-secret tunables: `config.json`. Secrets (Facebook page token + page
-id, Gemini key, optional Pexels / Pixabay keys) live in the `credentials`
-block of `config.json` (or `.env`).
+**Single source of truth: `config.json`.** All tunables AND secrets
+(Facebook page token + page id, Gemini key, optional Pexels / Pixabay
+keys) live there inside the `credentials` block. There is no `.env`
+file — drop your keys directly into `config.json` and run.
 
 ## Dependencies
 
 - Python 3.11 (managed by `uv` on Replit; standard `venv` on VPS).
 - Pip packages (see `requirements.txt`): aiohttp, feedparser, beautifulsoup4,
-  lxml, requests, Pillow, uharfbuzz, freetype-py, python-dotenv,
+  lxml, requests, Pillow, uharfbuzz, freetype-py,
   google-generativeai, openai, schedule, pytz, deep-translator, yt-dlp.
 - System: ffmpeg + ffprobe, Noto Bengali fonts, libjpeg/zlib/freetype/
   harfbuzz/fribidi headers (installed by `setup.sh`).
@@ -126,16 +127,15 @@ sudo mkdir -p /opt/news_bot && sudo chown $USER:$USER /opt/news_bot
 git clone <your-repo> /opt/news_bot      # or scp/rsync your files
 cd /opt/news_bot
 
-# 2. One-shot installer (system pkgs + venv + pip deps + font + .env)
+# 2. Edit credentials inside config.json (Facebook token, Gemini key, …)
+nano config.json
+
+# 3. ONE-CLICK install + start  (sys pkgs + venv + pip deps + font + launch)
 bash setup.sh
+#    → use  bash setup.sh --install-only  to install but not auto-start
+#    → use  bash run.sh                   to start the bot any time later
 
-# 3. Edit secrets
-nano .env                                 # or: nano config.json
-
-# 4. Quick test
-.venv/bin/python main.py                  # Ctrl+C to stop
-
-# 5. Install as a 24/7 systemd service
+# 4. Install as a 24/7 systemd service
 sudo cp news-bot.service /etc/systemd/system/
 sudo sed -i "s|/opt/news_bot|$PWD|g" /etc/systemd/system/news-bot.service
 sudo sed -i "s|User=newsbot|User=$USER|g; s|Group=newsbot|Group=$USER|g" /etc/systemd/system/news-bot.service

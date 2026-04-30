@@ -1,10 +1,8 @@
-"""Load config.json and resolve credentials.
+"""Load ``config.json`` — the single source of truth for the bot.
 
-Credentials precedence (highest first):
-  1. Environment variable (e.g. GEMINI_API_KEY) — useful for VPS deployment
-  2. ``credentials.<key>`` block inside config.json — useful when the user
-     prefers to keep everything in a single file
-  3. Empty string (feature stays disabled)
+All API keys, tokens and tunables live inside ``config.json``. There is
+**no** ``.env`` file and **no** environment-variable lookups: drop your
+keys into the ``credentials`` block, run the bot, done.
 """
 from __future__ import annotations
 
@@ -12,35 +10,33 @@ import json
 import os
 from typing import Any, Dict
 
-from dotenv import load_dotenv
 
-
-# Maps the secret key used inside the bot → matching env-var name
-_SECRET_ENV_MAP: Dict[str, str] = {
-    "gemini_api_key":              "GEMINI_API_KEY",
-    "openai_api_key":              "OPENAI_API_KEY",
-    "facebook_page_access_token":  "FACEBOOK_PAGE_ACCESS_TOKEN",
-    "facebook_page_id":            "FACEBOOK_PAGE_ID",
-    "pexels_api_key":              "PEXELS_API_KEY",
-    "pixabay_api_key":             "PIXABAY_API_KEY",
-}
+# Every secret the rest of the codebase may ask for. Anything missing in
+# ``credentials`` simply becomes "" so the related feature stays disabled.
+_SECRET_KEYS = (
+    "gemini_api_key",
+    "openai_api_key",
+    "facebook_page_access_token",
+    "facebook_page_id",
+    "pexels_api_key",
+    "pixabay_api_key",
+)
 
 
 def load_config(path: str = "config.json") -> Dict[str, Any]:
-    """Load JSON config file and resolve credentials from env or config.json."""
-    load_dotenv()  # picks up .env if present (optional)
-
+    """Load JSON config and expose credentials under ``cfg["secrets"]``."""
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Config file not found: {path}")
+        raise FileNotFoundError(
+            f"Config file not found: {path}. Copy config.json into the "
+            f"project root and fill in the 'credentials' block."
+        )
 
     with open(path, "r", encoding="utf-8") as f:
         cfg: Dict[str, Any] = json.load(f)
 
     creds_block = cfg.get("credentials", {}) or {}
-    cfg["secrets"] = {}
-    for key, env_name in _SECRET_ENV_MAP.items():
-        env_val = os.getenv(env_name, "").strip()
-        cfg_val = str(creds_block.get(key, "") or "").strip()
-        cfg["secrets"][key] = env_val or cfg_val
-
+    cfg["secrets"] = {
+        key: str(creds_block.get(key, "") or "").strip()
+        for key in _SECRET_KEYS
+    }
     return cfg

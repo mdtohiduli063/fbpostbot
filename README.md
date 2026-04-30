@@ -63,9 +63,10 @@ posts them with proper attribution.
 ```bash
 git clone <your-repo> /opt/news_bot
 cd /opt/news_bot
-bash setup.sh                # installs Python, system libs, deps, fonts, venv
-nano .env                    # OR: nano config.json (paste keys)
-.venv/bin/python main.py     # smoke test (Ctrl+C to stop)
+nano config.json             # paste FB token, page id, Gemini key (credentials block)
+bash setup.sh                # ✅ installs everything AND starts the bot
+#   bash setup.sh --install-only   # install only, don't auto-start
+#   bash run.sh                    # start later (auto-uses .venv)
 ```
 
 Run as a 24/7 background service (the `setup.sh` output prints the exact
@@ -182,11 +183,9 @@ on Wikimedia / Internet Archive / Pexels / Pixabay.
 | `pexels_api_key` (optional)    | https://www.pexels.com/api/                                       |
 | `pixabay_api_key` (optional)   | https://pixabay.com/api/docs/                                     |
 
-You can also put them in `.env` instead of `config.json` — env vars take
-priority. See `.env.example` for the variable names.
-
-> ⚠️ `config.json` contains real tokens. Add it to `.gitignore` if you push
-> this repo anywhere public.
+> ⚠️ `config.json` is the **only** place credentials live (no `.env` file).
+> It contains real tokens, so add it to `.gitignore` before pushing this
+> repo anywhere public.
 
 ---
 
