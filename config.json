@@ -295,21 +295,21 @@
     ]
   },
   "scheduler": {
-    "post_interval_minutes": 0,
+    "post_interval_minutes": 5,
     "active_hours": [
       0,
       24
     ],
     "post_times": [],
-    "instant_breaking_news": true,
-    "realtime_mode": true,
+    "instant_breaking_news": false,
+    "realtime_mode": false,
     "min_seconds_between_posts": 25,
-    "max_posts_per_fetch": 8,
+    "max_posts_per_fetch": 1,
     "delete_image_after_post": true,
-    "max_posts_per_run": 8,
-    "min_minutes_between_posts": 0,
-    "video_post_interval_minutes": 5,
-    "cache_clean_interval_minutes": 60
+    "max_posts_per_run": 1,
+    "min_minutes_between_posts": 5,
+    "video_post_interval_minutes": 10,
+    "cache_clean_interval_minutes": 10
   },
   "facebook": {
     "enabled": true,
@@ -386,11 +386,11 @@
     }
   },
   "cache": {
-    "run_every_minutes": 60,
-    "images_ttl_hours": 48,
-    "images_max_mb": 200,
-    "videos_ttl_hours": 24,
-    "videos_max_mb": 500,
+    "run_every_minutes": 10,
+    "images_ttl_hours": 1,
+    "images_max_mb": 50,
+    "videos_ttl_hours": 1,
+    "videos_max_mb": 100,
     "reports_ttl_days": 14,
     "events_max_mb": 5,
     "logs_ttl_days": 7
