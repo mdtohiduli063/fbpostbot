@@ -108,6 +108,34 @@ FONT_STYLES: Dict[str, Tuple[str, str]] = {
     "credit": ("normal", "regular"),
 }
 
+BODY_ACCENTS: Dict[str, Tuple[RGB, RGB]] = {
+    "breaking": ((255, 245, 140), (255, 255, 255)),
+    "politics": ((255, 230, 120), (240, 246, 255)),
+    "cricket": ((220, 255, 230), (255, 255, 255)),
+    "entertainment": ((255, 230, 190), (255, 255, 255)),
+    "government": ((225, 230, 255), (255, 255, 255)),
+    "price": ((255, 235, 150), (255, 250, 225)),
+    "exam_jobs": ((220, 255, 245), (235, 250, 255)),
+    "tech": ((200, 235, 255), (240, 250, 255)),
+    "world": ((245, 220, 255), (255, 245, 250)),
+    "sports": ((255, 245, 170), (235, 255, 240)),
+    "general": ((240, 245, 255), (255, 255, 255)),
+}
+
+BODY_STYLE: Dict[str, Dict[str, int]] = {
+    "breaking": {"size_delta": -2, "spacing": 8},
+    "politics": {"size_delta": -1, "spacing": 10},
+    "cricket": {"size_delta": 0, "spacing": 10},
+    "entertainment": {"size_delta": -1, "spacing": 10},
+    "government": {"size_delta": -1, "spacing": 10},
+    "price": {"size_delta": 0, "spacing": 9},
+    "exam_jobs": {"size_delta": 0, "spacing": 10},
+    "tech": {"size_delta": -1, "spacing": 10},
+    "world": {"size_delta": -1, "spacing": 10},
+    "sports": {"size_delta": 0, "spacing": 10},
+    "general": {"size_delta": 0, "spacing": 10},
+}
+
 
 class ImageGenerator:
     """Render Bangla news cards with single-line top headline + premium look."""
@@ -124,6 +152,7 @@ class ImageGenerator:
         self.brand_name    = cfg.get("brand_name", "News Summary")
         self.bot_credit    = cfg.get("bot_credit", "BOT BY TOHIDUL")
         self.text_color    = tuple(cfg.get("text_color", [255, 255, 255]))
+        self.text_shadow_color = tuple(cfg.get("text_shadow_color", [0, 0, 0]))
         self.output_dir    = output_dir
         self.logo_path     = logo_path
         os.makedirs(self.output_dir, exist_ok=True)
@@ -131,6 +160,7 @@ class ImageGenerator:
         self.font_path = self._find_bangla_font()
         self.font_regular_path = self._find_bangla_font(prefer_regular=True)
         self.font_alt_path = self._find_alt_font()
+        self.font_premium_path = self._find_premium_font()
         if not self.font_path:
             log.warning("No Bangla TTF found in assets/fonts/ — text quality will degrade.")
             self._renderer: Optional[BanglaTextRenderer] = None
@@ -179,7 +209,7 @@ class ImageGenerator:
             # 4. Body text — uses the entire space below the badge to ~36px
             # from the bottom edge. No divider, no footer, no credit line.
             self._draw_body_block(draw, img, body or "",
-                                  zone_top=ribbon_h + 130,
+                                  zone_top=ribbon_h + 118,
                                   zone_bot=self.height - 60)
 
             # 5. Bottom accent bar (decorative — not text)
@@ -436,6 +466,7 @@ class ImageGenerator:
                                      size=b_size, fill=color,
                                      shadow=True, shadow_offset=2)
             self._draw_line_highlight(draw, start_y + i * b_line_h, color)
+        self._draw_body_frame(draw, zone_top, zone_bot, body)
 
     def _draw_footer(self, draw: ImageDraw.ImageDraw, img: Image.Image,
                      line1: str, line2: str,
@@ -494,6 +525,36 @@ class ImageGenerator:
             [(self.padding, y - 4), (self.width - self.padding, y - 4)],
             fill=(color[0], color[1], color[2], 36),
             width=1,
+        )
+
+    def _draw_body_frame(self, draw: ImageDraw.ImageDraw,
+                         zone_top: int, zone_bot: int, body: str) -> None:
+        accent_a, accent_b = BODY_ACCENTS.get("general", BODY_ACCENTS["general"])
+        tone = accent_a if len(body) < 220 else accent_b
+        left = self.padding - 14
+        right = self.width - self.padding + 14
+        draw.rounded_rectangle(
+            [left, zone_top - 20, right, zone_bot + 12],
+            radius=28,
+            outline=(tone[0], tone[1], tone[2], 105),
+            width=2,
+        )
+        draw.rounded_rectangle(
+            [left + 8, zone_top - 12, right - 8, zone_bot + 4],
+            radius=22,
+            outline=(255, 255, 255, 32),
+            width=1,
+        )
+        for y in range(zone_top + 20, zone_bot - 10, 120):
+            draw.line(
+                [(left + 20, y), (right - 20, y)],
+                fill=(tone[0], tone[1], tone[2], 18),
+                width=1,
+            )
+        draw.rounded_rectangle(
+            [left + 14, zone_top - 6, right - 14, zone_top + 28],
+            radius=18,
+            fill=(255, 255, 255, 10),
         )
 
     # ───────────────────────────── text fitting ──────────────────────────
@@ -584,6 +645,18 @@ class ImageGenerator:
     def _find_alt_font(self) -> Optional[str]:
         candidates = [
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for cand in candidates:
+            if os.path.isfile(cand):
+                return cand
+        return None
+
+    def _find_premium_font(self) -> Optional[str]:
+        candidates = [
+            "/usr/share/fonts/truetype/noto/NotoSansBengali-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         ]
