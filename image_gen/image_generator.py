@@ -152,7 +152,7 @@ class ImageGenerator:
             self._draw_divider(draw, accent, y=divider_y)
 
             # 6. Body block — clean, uniform color
-            body_top = divider_y + 30
+            body_top = divider_y + 12
             body_bot = self.height - 82   # leave room for bottom bar
             self._draw_body(img, body or "", top=body_top, bot=body_bot,
                             max_w=content_w)
@@ -354,8 +354,8 @@ class ImageGenerator:
                          accent: RGB, palette: Tuple[RGB, RGB, RGB],
                          source_name: Optional[str] = None) -> None:
         """Bottom brand bar with brand name centered."""
-        bar_top = self.height - 72
-        bar_h = 72
+        bar_top = self.height - 78
+        bar_h = 78
 
         # Bar background — slightly darker than page bg
         bar = Image.new("RGBA", (self.width, bar_h), (0, 0, 0, 0))
@@ -369,7 +369,7 @@ class ImageGenerator:
 
         # Brand name centered
         brand = self.brand_name.upper()
-        brand_size = self.credit_size + 4
+        brand_size = self.credit_size + 2
         bw = self._bn_width(brand, brand_size)
         bx = (self.width - bw) // 2
         by = bar_top + (bar_h - brand_size) // 2
@@ -388,6 +388,15 @@ class ImageGenerator:
             draw.ellipse([bx + bw + 24 - dot_r, dot_y - dot_r,
                           bx + bw + 24 + dot_r, dot_y + dot_r],
                          fill=(*accent, 200))
+
+        owner = "BOT OWNER TOHIDUL STYLE"
+        owner_size = self.credit_size
+        ow = self._bn_width(owner, owner_size)
+        ox = (self.width - ow) // 2
+        oy = bar_top - owner_size - 10
+        self._bn_render(img, owner, x=ox, y=oy, size=owner_size,
+                        fill=(255, 255, 255),
+                        shadow=True, shadow_offset=1)
 
     # ─────────────────────────── logo ───────────────────────────────────────
 
