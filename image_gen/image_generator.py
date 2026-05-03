@@ -100,6 +100,14 @@ CATEGORY_EMOJI_BADGE: Dict[str, str] = {
     "general":       "📰",
 }
 
+FONT_STYLES: Dict[str, Tuple[str, str]] = {
+    "headline": ("normal", "bold"),
+    "body": ("normal", "regular"),
+    "badge": ("normal", "bold"),
+    "accent": ("normal", "bold"),
+    "credit": ("normal", "regular"),
+}
+
 
 class ImageGenerator:
     """Render Bangla news cards with single-line top headline + premium look."""
@@ -121,6 +129,8 @@ class ImageGenerator:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.font_path = self._find_bangla_font()
+        self.font_regular_path = self._find_bangla_font(prefer_regular=True)
+        self.font_alt_path = self._find_alt_font()
         if not self.font_path:
             log.warning("No Bangla TTF found in assets/fonts/ — text quality will degrade.")
             self._renderer: Optional[BanglaTextRenderer] = None
@@ -390,6 +400,7 @@ class ImageGenerator:
         )
         self._bn_render(img, text, x + 8 + pad_x, y + pad_y, size,
                         fill=(20, 20, 20))
+        self._draw_accent_label(img, f"● {text}", x + tw + 28, y + 6, accent)
 
     def _draw_body_block(self, draw: ImageDraw.ImageDraw, img: Image.Image,
                          body: str, zone_top: int, zone_bot: int) -> None:
@@ -420,9 +431,11 @@ class ImageGenerator:
         start_y = zone_top + max(0, (zone_h - body_block_h) // 4)
 
         for i, ln in enumerate(b_lines):
+            color = self._body_line_color(i, len(b_lines))
             self._bn_render_centered(img, ln, y=start_y + i * b_line_h,
-                                     size=b_size, fill=(245, 245, 245),
+                                     size=b_size, fill=color,
                                      shadow=True, shadow_offset=2)
+            self._draw_line_highlight(draw, start_y + i * b_line_h, color)
 
     def _draw_footer(self, draw: ImageDraw.ImageDraw, img: Image.Image,
                      line1: str, line2: str,
@@ -460,6 +473,28 @@ class ImageGenerator:
                       logo)
         except Exception as e:
             log.warning("Logo paste failed: %s", e)
+
+    def _draw_accent_label(self, img: Image.Image, text: str, x: int, y: int,
+                           accent: RGB) -> None:
+        size = max(18, self.credit_size - 4)
+        self._bn_render(img, text, x, y, size, fill=accent, shadow=True, shadow_offset=1)
+
+    def _body_line_color(self, index: int, total: int) -> RGB:
+        if total <= 1:
+            return (248, 248, 248)
+        if index == 0:
+            return (255, 245, 180)
+        if index == total - 1:
+            return (220, 235, 255)
+        return (242, 242, 242)
+
+    def _draw_line_highlight(self, draw: ImageDraw.ImageDraw, y: int,
+                              color: RGB) -> None:
+        draw.line(
+            [(self.padding, y - 4), (self.width - self.padding, y - 4)],
+            fill=(color[0], color[1], color[2], 36),
+            width=1,
+        )
 
     # ───────────────────────────── text fitting ──────────────────────────
 
@@ -546,10 +581,24 @@ class ImageGenerator:
 
     # ───────────────────────────────── fonts ─────────────────────────────
 
-    def _find_bangla_font(self) -> Optional[str]:
+    def _find_alt_font(self) -> Optional[str]:
+        candidates = [
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for cand in candidates:
+            if os.path.isfile(cand):
+                return cand
+        return None
+
+    def _find_bangla_font(self, prefer_regular: bool = False) -> Optional[str]:
         # Resolve relative paths against the repo root + module dir
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for cand in BANGLA_FONT_CANDIDATES:
+        candidates = list(BANGLA_FONT_CANDIDATES)
+        if prefer_regular:
+            candidates.sort(key=lambda p: ("Regular" not in p, p))
+        for cand in candidates:
             for base in (cand, os.path.join(here, cand), os.path.abspath(cand)):
                 if os.path.isfile(base):
                     return base
