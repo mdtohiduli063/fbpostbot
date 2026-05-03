@@ -19,6 +19,7 @@ possible.
 from __future__ import annotations
 
 import asyncio
+import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +37,7 @@ class YouTubeCollector:
         self.enabled = bool(cfg.get("enabled", False))
         self.channels: List[Dict[str, str]] = cfg.get("channels", [])
         self.max_per_channel = int(cfg.get("max_per_channel", 3))
+        self.search_queries: List[str] = cfg.get("search_queries", [])
         # Per-clip duration is randomised between segment_seconds_min..max,
         # so each repost feels different (15-20 s by default).
         self.segment_seconds_min = int(cfg.get("segment_seconds_min",
@@ -82,22 +84,45 @@ class YouTubeCollector:
         channel_url = ch.get("url", "").strip()
         if not channel_url:
             return []
-        # Force the /videos tab so we get uploads (not Shorts / Live tabs)
-        if "/videos" not in channel_url and ("@" in channel_url
-                                             or "/c/" in channel_url
-                                             or "/user/" in channel_url
-                                             or "/channel/" in channel_url):
-            list_url = channel_url.rstrip("/") + "/videos"
-        else:
-            list_url = channel_url
 
         list_opts = {
-            "quiet": True, "no_warnings": True, "skip_download": True,
-            "extract_flat": True, "playlistend": self.max_per_channel,
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "playlistend": self.max_per_channel,
+            "nocheckcertificate": True,
+            "retries": 3,
+            "extractor_retries": 3,
+            "extractor_args": {
+                "youtube": {
+                    "skip": ["webpage", "dash", "hls"],
+                }
+            },
         }
-        with yt_dlp.YoutubeDL(list_opts) as ydl:
-            info = ydl.extract_info(list_url, download=False)
-        entries = (info.get("entries") or [])[: self.max_per_channel]
+        entries: List[Dict[str, Any]] = []
+        urls = [channel_url]
+        if "/videos" not in channel_url:
+            urls.append(channel_url.rstrip("/") + "/videos")
+        for url in urls:
+            try:
+                with yt_dlp.YoutubeDL(list_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                entries = (info.get("entries") or [])[: self.max_per_channel]
+                if entries:
+                    break
+            except Exception as e:
+                log.warning("YouTube list fetch failed for %s: %s", ch.get("name", url), e)
+                continue
+        if not entries and self.search_queries:
+            query = random.choice(self.search_queries)
+            try:
+                with yt_dlp.YoutubeDL(list_opts) as ydl:
+                    info = ydl.extract_info(f"ytsearch{self.max_per_channel}:{query}", download=False)
+                entries = (info.get("entries") or [])[: self.max_per_channel]
+            except Exception as e:
+                log.warning("YouTube search fallback failed for %s: %s", query, e)
+                entries = []
 
         results: List[VideoItem] = []
         for e in entries:
@@ -154,8 +179,18 @@ class YouTubeCollector:
     def _fetch_full(self, video_id: str) -> Optional[Dict[str, Any]]:
         import yt_dlp
         opts = {
-            "quiet": True, "no_warnings": True, "skip_download": True,
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
             "youtube_include_dash_manifest": False,
+            "nocheckcertificate": True,
+            "retries": 3,
+            "extractor_retries": 3,
+            "extractor_args": {
+                "youtube": {
+                    "skip": ["webpage", "dash", "hls"],
+                }
+            },
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(

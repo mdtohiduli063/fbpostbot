@@ -211,7 +211,7 @@ class ImageGenerator:
                 g = int(mid[1] + (bot[1] - mid[1]) * t)
                 b = int(mid[2] + (bot[2] - mid[2]) * t)
             for x in range(self.width):
-                px[x, y] = (r, g, b, 255)
+                img.putpixel((x, y), (r, g, b, 255))
         return img
 
     def _apply_vignette(self, img: Image.Image) -> None:
@@ -268,6 +268,41 @@ class ImageGenerator:
                          start=0, end=180, fill=soft2, width=3)
 
         overlay = overlay.filter(ImageFilter.GaussianBlur(radius=1.6))
+        img.alpha_composite(overlay)
+        self._draw_frame_effects(img, accent, category)
+
+    def _draw_frame_effects(self, img: Image.Image, accent: RGB, category: str) -> None:
+        overlay = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay, "RGBA")
+        border = (*accent, 120)
+        inner = (255, 255, 255, 40)
+        glow = (*accent, 55)
+
+        for i in range(3):
+            inset = 18 + i * 12
+            draw.rounded_rectangle(
+                [inset, inset, self.width - inset, self.height - inset],
+                radius=max(16, 34 - i * 4),
+                outline=border if i == 0 else inner,
+                width=6 if i == 0 else 2,
+            )
+        draw.rounded_rectangle(
+            [44, 44, self.width - 44, self.height - 44],
+            radius=22,
+            outline=glow,
+            width=1,
+        )
+        for y in range(170, self.height - 120, 140):
+            draw.line([(42, y), (self.width - 42, y)], fill=(255, 255, 255, 18), width=1)
+        for i in range(10):
+            x1 = 26 + i * 100
+            x2 = min(x1 + 34, self.width - 26)
+            y1 = self.height - 24
+            draw.line([(x1, y1), (x2, y1)], fill=border, width=3)
+        if category in ("breaking", "tech", "sports"):
+            for x in range(80, self.width - 80, 120):
+                draw.line([(x, 0), (x + 50, 50)], fill=glow, width=2)
+                draw.line([(x, self.height), (x + 50, self.height - 50)], fill=glow, width=2)
         img.alpha_composite(overlay)
 
     @staticmethod
@@ -419,7 +454,7 @@ class ImageGenerator:
             logo = Image.open(self.logo_path).convert("RGBA")
             target_w = 110
             ratio = target_w / logo.width
-            logo = logo.resize((target_w, int(logo.height * ratio)), Image.LANCZOS)
+            logo = logo.resize((target_w, int(logo.height * ratio)), Image.Resampling.LANCZOS)
             img.paste(logo,
                       (self.width - target_w - self.padding, top_offset),
                       logo)
@@ -520,7 +555,7 @@ class ImageGenerator:
                     return base
         return None
 
-    def _font(self, size: int) -> ImageFont.ImageFont:
+    def _font(self, size: int):
         if self.font_path:
             try:
                 return ImageFont.truetype(self.font_path, size=size)

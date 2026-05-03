@@ -344,6 +344,13 @@
       "South Asia",
       "Asia news"
     ],
+    "search_queries": [
+      "Bangla news today",
+      "Bangladesh latest news",
+      "Dhaka news update",
+      "Somoy TV latest",
+      "Jamuna TV latest"
+    ],
     "sources_enabled": {
       "voa": false,
       "wikimedia": true,
