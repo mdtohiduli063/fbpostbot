@@ -129,6 +129,9 @@ class YouTubeCollector:
             vid = e.get("id")
             if not vid:
                 continue
+            # Skip channel IDs (start with UC and are ~24 chars) — only want video IDs (11 chars)
+            if len(vid) != 11 or vid.startswith("UC"):
+                continue
             try:
                 full = self._fetch_full(vid)
             except Exception as exc:

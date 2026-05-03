@@ -361,13 +361,7 @@
       "nasa": true,
       "un_multimedia": true
     },
-    "voa_feeds": [
-      {
-        "name": "VOA Bangla",
-        "url": "https://www.voabangla.com/api/zmgqoe$umi",
-        "license": "Public Domain (US Federal Government)"
-      }
-    ],
+    "voa_feeds": [],
     "processor": {
       "max_output_seconds": 120,
       "target_fps": 30,
