@@ -319,15 +319,15 @@
     "enabled": true,
     "audio_dir": "audio",
     "delete_video_after_post": true,
-    "duration_min_seconds": 15,
-    "duration_max_seconds": 20,
+    "duration_min_seconds": 45,
+    "duration_max_seconds": 60,
     "target_fps": 30,
-    "video_bitrate": "1800k",
+    "video_bitrate": "2000k",
     "audio_bitrate": "128k",
-    "audio_fade_seconds": 1.2,
+    "audio_fade_seconds": 2.0,
     "audio_volume": 0.85,
-    "zoom_strength": 0.08,
-    "ffmpeg_timeout_seconds": 180
+    "zoom_strength": 0.06,
+    "ffmpeg_timeout_seconds": 240
   },
   "video_bot": {
     "enabled": true,
@@ -352,22 +352,30 @@
       "Jamuna TV latest"
     ],
     "sources_enabled": {
-      "voa": false,
+      "voa": true,
       "wikimedia": true,
       "internet_archive": true,
       "pexels": true,
       "pixabay": true,
-      "youtube": true
+      "youtube": true,
+      "nasa": true,
+      "un_multimedia": true
     },
-    "voa_feeds": [],
+    "voa_feeds": [
+      {
+        "name": "VOA Bangla",
+        "url": "https://www.voabangla.com/api/zmgqoe$umi",
+        "license": "Public Domain (US Federal Government)"
+      }
+    ],
     "processor": {
-      "max_output_seconds": 90,
+      "max_output_seconds": 120,
       "target_fps": 30,
       "target_width": 1080,
       "target_height": 1080,
-      "video_bitrate": "1800k",
+      "video_bitrate": "2000k",
       "audio_bitrate": "128k",
-      "download_timeout_seconds": 90
+      "download_timeout_seconds": 120
     },
     "youtube": {
       "enabled": true,
@@ -381,15 +389,37 @@
           "name": "Somoy TV",
           "url": "https://www.youtube.com/@somoytvnews",
           "license_label": "© Somoy TV — Editorial / Fair Use"
+        },
+        {
+          "name": "DW News",
+          "url": "https://www.youtube.com/@dwnews",
+          "license_label": "© DW — Editorial / Fair Use"
+        },
+        {
+          "name": "Al Jazeera English",
+          "url": "https://www.youtube.com/@AlJazeeraEnglish",
+          "license_label": "© Al Jazeera — Editorial / Fair Use"
+        },
+        {
+          "name": "TRT World",
+          "url": "https://www.youtube.com/@trtworld",
+          "license_label": "© TRT World — Editorial / Fair Use"
         }
       ],
       "max_per_channel": 2,
-      "segment_seconds_min": 15,
-      "segment_seconds_max": 20,
-      "max_segment_seconds": 60,
+      "segment_seconds_min": 45,
+      "segment_seconds_max": 60,
+      "max_segment_seconds": 90,
       "intro_skip_seconds": 5,
-      "min_video_duration_seconds": 30,
-      "max_video_duration_seconds": 1800
+      "min_video_duration_seconds": 60,
+      "max_video_duration_seconds": 3600,
+      "search_queries": [
+        "Bangladesh news today",
+        "Bangla latest news",
+        "Dhaka news update",
+        "South Asia news today",
+        "Bangladesh 2024"
+      ]
     }
   },
   "cache": {

@@ -5,6 +5,8 @@ Default sources (no API key required):
       RSS feeds with ``<enclosure type="video/mp4">`` items.
   • Wikimedia Commons category search (CC-BY-SA / CC0 / PD videos)
   • Internet Archive (PD / CC items, news-related collections)
+  • NASA (US Federal Government — public domain images/video)
+  • UN Multimedia Centre (free with attribution for news use)
 
 Optional sources (require API keys via env vars):
   • Pexels videos       — PEXELS_API_KEY      (Pexels License — free use w/ attribution)
@@ -113,6 +115,10 @@ class VideoCollector:
                 tasks.append(self._collect_wikimedia(session))
             if self.sources_cfg.get("internet_archive", True):
                 tasks.append(self._collect_internet_archive(session))
+            if self.sources_cfg.get("nasa", True):
+                tasks.append(self._collect_nasa(session))
+            if self.sources_cfg.get("un_multimedia", True):
+                tasks.append(self._collect_un_multimedia(session))
             if self.sources_cfg.get("pexels", True) and self.secrets.get("pexels_api_key"):
                 tasks.append(self._collect_pexels(session))
             if self.sources_cfg.get("pixabay", True) and self.secrets.get("pixabay_api_key"):
@@ -430,4 +436,149 @@ class VideoCollector:
                     duration_seconds=int(v.get("duration", 0)),
                     thumbnail_url=v.get("picture_id", ""),
                 ))
+        return items
+
+    # ─────────────────────────── NASA (Public Domain) ─────────────────────────
+
+    async def _collect_nasa(self, session: aiohttp.ClientSession) -> List[VideoItem]:
+        """NASA Image and Video Library — all content is US public domain."""
+        items: List[VideoItem] = []
+        api = "https://images-api.nasa.gov/search"
+        queries = ["Earth", "space", "climate", "technology", "science"]
+        for q in queries[:3]:
+            params = {
+                "q": q,
+                "media_type": "video",
+                "year_start": "2020",
+                "page_size": str(self.max_per_source),
+            }
+            try:
+                async with session.get(api, params=params) as resp:
+                    resp.raise_for_status()
+                    data = await resp.json()
+            except Exception as e:
+                log.warning("NASA search failed for '%s': %s", q, e)
+                continue
+
+            collection = (data.get("collection") or {})
+            for item_data in (collection.get("items") or [])[:self.max_per_source]:
+                data_list = item_data.get("data") or []
+                links_list = item_data.get("links") or []
+                if not data_list:
+                    continue
+                meta = data_list[0]
+                nasa_id = meta.get("nasa_id", "")
+                title = (meta.get("title") or "NASA Video")[:200]
+                desc = (meta.get("description") or "")[:600]
+                # Resolve the actual video file URL via asset manifest
+                video_url = await self._nasa_resolve_video(session, nasa_id)
+                if not video_url:
+                    # Fallback: try links list for preview
+                    for lnk in links_list:
+                        href = lnk.get("href", "")
+                        if href.lower().endswith((".mp4", ".webm", ".mov")):
+                            video_url = href
+                            break
+                if not video_url:
+                    continue
+                thumb = ""
+                for lnk in links_list:
+                    if lnk.get("rel") == "preview" and lnk.get("href", "").endswith((".jpg", ".png")):
+                        thumb = lnk["href"]
+                        break
+                items.append(VideoItem(
+                    title=title,
+                    description=desc,
+                    video_url=video_url,
+                    page_url=f"https://images.nasa.gov/details/{nasa_id}",
+                    source="NASA",
+                    license_name="Public Domain (US Federal Government)",
+                    author="NASA",
+                    thumbnail_url=thumb,
+                ))
+        log.info("🚀 NASA: %d video(s) found", len(items))
+        return items
+
+    @staticmethod
+    async def _nasa_resolve_video(session: aiohttp.ClientSession,
+                                  nasa_id: str) -> str:
+        """Fetch NASA asset manifest and return best mp4 URL."""
+        if not nasa_id:
+            return ""
+        try:
+            async with session.get(
+                f"https://images-api.nasa.gov/asset/{nasa_id}"
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except Exception:
+            return ""
+        items = (data.get("collection") or {}).get("items") or []
+        # Prefer ~640 / medium mp4; avoid 4K to keep download fast
+        mp4s = [i["href"] for i in items
+                if isinstance(i.get("href"), str)
+                and i["href"].lower().endswith(".mp4")]
+        # Sort: prefer smaller/medium files (avoid "orig" 4K versions)
+        mp4s.sort(key=lambda u: (
+            0 if any(x in u.lower() for x in ("640", "medium", "mobile", "small")) else 1
+        ))
+        return mp4s[0] if mp4s else ""
+
+    # ─────────────── UN Multimedia Centre (free with attribution) ─────────────
+
+    async def _collect_un_multimedia(self, session: aiohttp.ClientSession) -> List[VideoItem]:
+        """UN News Centre RSS — videos are free for media use with attribution."""
+        items: List[VideoItem] = []
+        feeds = [
+            {
+                "name": "UN News",
+                "url": "https://news.un.org/feed/subscribe/en/news/region/asia-pacific/feed/rss.xml",
+                "license": "UN Multimedia — Free for media use with attribution",
+            },
+            {
+                "name": "UN News Global",
+                "url": "https://news.un.org/feed/subscribe/en/news/topic/peace-and-security/feed/rss.xml",
+                "license": "UN Multimedia — Free for media use with attribution",
+            },
+        ]
+        for feed in feeds:
+            try:
+                async with session.get(feed["url"]) as resp:
+                    resp.raise_for_status()
+                    body = await resp.read()
+            except Exception as e:
+                log.warning("UN Multimedia feed failed (%s): %s", feed["name"], e)
+                continue
+            parsed = feedparser.parse(body)
+            for entry in parsed.entries[: self.max_per_source]:
+                video_url = self._extract_video_url_from_entry(entry)
+                if not video_url:
+                    # Try to find video in content
+                    content = entry.get("content") or []
+                    for c in content:
+                        val = c.get("value", "")
+                        if ".mp4" in val or ".webm" in val:
+                            import re
+                            found = re.search(r'https?://[^\s"\'<>]+\.mp4', val)
+                            if found:
+                                video_url = found.group(0)
+                                break
+                if not video_url:
+                    continue
+                title = (entry.get("title") or "").strip()
+                desc_html = entry.get("summary") or entry.get("description") or ""
+                desc = BeautifulSoup(desc_html, "lxml").get_text(" ", strip=True)[:600]
+                published = self._entry_datetime(entry)
+                items.append(VideoItem(
+                    title=title,
+                    description=desc,
+                    video_url=video_url,
+                    page_url=(entry.get("link") or "").strip(),
+                    source=feed["name"],
+                    license_name=feed["license"],
+                    author="United Nations",
+                    published=published,
+                    thumbnail_url=self._extract_thumbnail(entry),
+                ))
+        log.info("🇺🇳 UN Multimedia: %d video(s) found", len(items))
         return items
